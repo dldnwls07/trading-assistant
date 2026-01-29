@@ -4,6 +4,8 @@ import click
 import pandas as pd
 import yfinance as yf
 
+from .validation import validate_ohlcv
+
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -40,6 +42,12 @@ def fetch(ticker, period, interval):
         )
         if df.empty:
             click.echo("No data returned. Check ticker or network.")
+            raise click.Abort()
+        # Validate OHLCV structure and values
+        try:
+            validate_ohlcv(df)
+        except ValueError as e:
+            click.echo(f"Data validation failed: {e}")
             raise click.Abort()
         filepath = DATA_DIR / f"{ticker.upper()}.csv"
         df.to_csv(filepath)
