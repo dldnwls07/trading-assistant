@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.pyc
+venv/
+.env
+.env.*
+
+# Node
+node_modules/
+dist/
+build/
+
+# Editor
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Data & DB
+*.db
+*.sqlite
+data/
+datasets/
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# Keys/secrets
+*.pem
+*.key
+*.secret
+secrets.json
+credentials.json
+aws_credentials
+id_rsa
+id_rsa.pub
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints

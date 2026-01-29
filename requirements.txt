@@ -1,0 +1,8 @@
+click>=8.0
+yfinance
+pandas
+pre-commit
+detect-secrets
+black
+isort
+flake8

@@ -1,0 +1,11 @@
+# CODEOWNERS
+# Replace `@dldnwls07` with your actual GitHub user or team
+# Example: /src/ @dldnwls07
+
+# Default owners for the repo
+* @dldnwls07
+
+# Suggested owners for directories
+/src/ @dldnwls07
+/.github/ @dldnwls07
+/tests/ @dldnwls07
