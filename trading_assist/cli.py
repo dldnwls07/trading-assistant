@@ -2,7 +2,9 @@ from pathlib import Path
 
 import click
 import pandas as pd
-import yfinance as yf
+from . import data_source
+
+from .validation import validate_ohlcv
 
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -32,14 +34,19 @@ def fetch(ticker, period, interval):
     msg_tail = f" {interval})..."
     click.echo(msg_head + msg_tail)
     try:
-        df = yf.download(
-            ticker,
-            period=period,
-            interval=interval,
-            progress=False,
-        )
+        try:
+            df = data_source.fetch(ticker, period=period, interval=interval)
+        except RuntimeError as e:
+            click.echo("No data returned. Check ticker or network.")
+            raise click.Abort()
         if df.empty:
             click.echo("No data returned. Check ticker or network.")
+            raise click.Abort()
+        # Validate OHLCV structure and values
+        try:
+            validate_ohlcv(df)
+        except ValueError as e:
+            click.echo(f"Data validation failed: {e}")
             raise click.Abort()
         filepath = DATA_DIR / f"{ticker.upper()}.csv"
         df.to_csv(filepath)
