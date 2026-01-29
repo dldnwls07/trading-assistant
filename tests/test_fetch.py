@@ -27,8 +27,8 @@ def test_fetch_saves_csv(monkeypatch, tmp_path):
 
     df = make_valid_df()
 
-    # mock yf.download to return our DataFrame
-    monkeypatch.setattr(cli.yf, "download", lambda *args, **kwargs: df)
+    # mock data_source.fetch to return our DataFrame
+    monkeypatch.setattr(cli.data_source, "fetch", lambda *args, **kwargs: df)
 
     result = runner.invoke(cli.main, ["fetch", "AAPL"])
     assert result.exit_code == 0
@@ -42,7 +42,7 @@ def test_fetch_empty_no_data(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "DATA_DIR", tmp_path / "data")
     (tmp_path / "data").mkdir()
 
-    monkeypatch.setattr(cli.yf, "download", lambda *args, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(cli.data_source, "fetch", lambda *args, **kwargs: pd.DataFrame())
 
     result = runner.invoke(cli.main, ["fetch", "FAKE"])
     assert result.exit_code != 0
@@ -56,7 +56,7 @@ def test_fetch_invalid_validation(monkeypatch, tmp_path):
 
     # return DataFrame missing required 'Close' column
     df = make_valid_df().drop(columns=["Close"])
-    monkeypatch.setattr(cli.yf, "download", lambda *args, **kwargs: df)
+    monkeypatch.setattr(cli.data_source, "fetch", lambda *args, **kwargs: df)
 
     result = runner.invoke(cli.main, ["fetch", "BAD"])
     assert result.exit_code != 0

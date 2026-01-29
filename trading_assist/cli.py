@@ -2,7 +2,7 @@ from pathlib import Path
 
 import click
 import pandas as pd
-import yfinance as yf
+from . import data_source
 
 from .validation import validate_ohlcv
 
@@ -34,12 +34,11 @@ def fetch(ticker, period, interval):
     msg_tail = f" {interval})..."
     click.echo(msg_head + msg_tail)
     try:
-        df = yf.download(
-            ticker,
-            period=period,
-            interval=interval,
-            progress=False,
-        )
+        try:
+            df = data_source.fetch(ticker, period=period, interval=interval)
+        except RuntimeError as e:
+            click.echo("No data returned. Check ticker or network.")
+            raise click.Abort()
         if df.empty:
             click.echo("No data returned. Check ticker or network.")
             raise click.Abort()
