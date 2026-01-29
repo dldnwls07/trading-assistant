@@ -1,8 +1,15 @@
 # Trading Assistant
 
+[![CI](https://github.com/dldnwls07/trading-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/dldnwls07/trading-assistant/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Issues](https://img.shields.io/github/issues/dldnwls07/trading-assistant)](https://github.com/dldnwls07/trading-assistant/issues)
+
 간단한 주식투자 보조 도구(미국 주식 우선). 현재 목표: CLI 프로토타입으로 기능 검증 후 확장(웹 앱, Chrome 확장) 및 모네타이즈.
 
 ## 개발 환경 (빠른 시작)
+
+**참고**: 개발 규칙이 업데이트되었습니다 — `DEVELOPMENT_GUIDELINES.md`를 확인하세요.
+
 
 1. Python 3.10+ 권장
 2. 가상환경 생성 및 활성화
@@ -33,4 +40,3 @@
 - `DEVELOPMENT_GUIDELINES.md` — 개발 원칙 및 작업 규칙 (변경 전 승인, 하드코딩 금지, AI 프롬프트 관리 등)
 
 > 개발 규칙을 준수하지 않은 변경은 반려될 수 있습니다. PR 생성 시 반드시 `PULL_REQUEST_TEMPLATE.md` 체크리스트를 채워주세요.
-
