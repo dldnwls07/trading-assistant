@@ -19,6 +19,9 @@ def validate_ohlcv(df: pd.DataFrame) -> None:
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
+    if df.columns.duplicated().any():
+        raise ValueError("Duplicate columns detected")
+
     # price cols not null
     price_cols = ["Open", "High", "Low", "Close"]
     if df[price_cols].isnull().any().any():

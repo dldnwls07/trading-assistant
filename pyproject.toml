@@ -11,7 +11,12 @@ dependencies = [
   "click>=8.0",
   "yfinance",
   "pandas",
+  "tradingeconomics",
+  "finnhub-python",
 ]
 
 [project.scripts]
 trading-assist = "trading_assist.cli:main"
+
+[tool.setuptools]
+packages = ["trading_assist"]

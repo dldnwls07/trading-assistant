@@ -26,21 +26,26 @@
 ## 단계별 작업 항목 (Sprint 단위) 🛠️
 
 ### Sprint 0 — 준비 (1주)
-- [ ] 요구사항 확정 (시장, 대상 기능, 실거래 여부, 예산)
-- [ ] 데이터 소스 확정 (우선 미국 주식 중심: yfinance, IEX Cloud, Finnhub, Polygon, Alpha Vantage; 브로커/실거래: Alpaca, Interactive Brokers; 한국 공시 및 데이터는 DART/FinanceDataReader로 추후 추가)
-- [ ] 기술 스택 확정 (Backend: FastAPI, DB: Postgres 등)
-- [ ] 저장소 초기화 및 이슈/보드 생성
+- [x] 요구사항 확정 (시장, 대상 기능, 실거래 여부, 예산)
+- [x] 데이터 소스 확정 (과거/일봉: yfinance, 실시간/분봉: Alpaca API)
+- [x] 기술 스택 확정 (CLI 프로토타입: Python, Click, Pandas)
+- [x] 저장소 초기화 및 이슈/보드 생성
 - [ ] 시장 시간·배당·스플릿·환율 처리 방안 설계
 
 ### Sprint 1 — CLI 프로토타입 (1주)
-- [ ] CLI 명세 정의 (명령어, 옵션, 출력 포맷)
-- [ ] OHLCV 수집 및 로컬 저장(간단한 DB 또는 파일)
-- [ ] 기본 재무(요약) 수집 및 표시 명령
-- [ ] 스크리너(간단한 필터) 및 알림(파일/콘솔) 기본 구현
+- [x] CLI 명세 정의 (명령어, 옵션, 출력 포맷)
+- [x] OHLCV 수집 및 로컬 저장(간단한 DB 또는 파일)
+- [x] 기본 재무(요약) 수집 및 표시 명령 (summary, financials, analyze 추가됨)
+- [x] 스크리너(간단한 필터) 구현
+- [x] 실시간 시세 조회 (quote 명령어 - Alpaca 연동)
+- [x] 계좌 정보 조회 (account 명령어 - Alpaca Trading API)
+- [x] 매수 주문 기능 (buy 명령어 - Alpaca Paper Trading)
+- [ ] 알림(파일/콘솔) 기본 구현
 - [ ] 테스트 스크립트 및 사용 문서(README에 사용법 추가)
 
 ### Sprint 2 — 시세 수집 & 기본 차트 (2주)
 - [ ] OHLCV 수집 스크립트 개선
+- [ ] Alpaca 분봉(Intraday) 데이터 수집 기능 구현
 - [ ] DB 모델/마이그레이션
 - [ ] 기본 차트 페이지(React + Plotly) 프로토타입
 
@@ -54,7 +59,7 @@
 
 ### Sprint 4 — 백테스터 & 전략 (2주)
 - [ ] 백테스트 프레임워크 통합 (backtrader/vectorbt)
-- [ ] 대표 전략 샘플 및 결과 리포트
+- [x] Alpaca Paper Trading(모의투자) 연동 및 주문 테스트 (기본 buy 구현됨)
 
 ---
 

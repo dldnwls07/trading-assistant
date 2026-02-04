@@ -1,8 +1,5 @@
-click>=8.0
-yfinance
+click
 pandas
-pre-commit
-detect-secrets
-black
-isort
-flake8
+yfinance
+tradingeconomics
+pytest
