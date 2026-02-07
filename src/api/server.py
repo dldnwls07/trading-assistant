@@ -40,6 +40,9 @@ analyst = StockAnalyst()
 ai_analyzer = AIAnalyzer()
 
 # === 모델 정의 ===
+class AnalysisRequest(BaseModel):
+    ticker: str
+
 class AnalysisResponse(BaseModel):
     ticker: str
     interval: str
@@ -102,51 +105,64 @@ def get_final_ticker(ticker: str) -> str:
     
     return ticker
 
-@app.get("/analyze/{ticker}")
-async def analyze_ticker(ticker: str):
-    """
-    Smart Analysis 수행 (Daily + Hourly + AI)
-    """
+async def run_analysis(ticker: str):
+    """실제 분석 로직 공통 엔진"""
+    # 1. 티커 매핑
+    final_ticker = get_final_ticker(ticker)
+    logger.info(f"Analyzing mapped ticker: {final_ticker} (Input: {ticker})")
+    
+    # 종목명 가져오기 (yf.Ticker 사용)
+    import yfinance as yf
+    display_name = final_ticker
     try:
-        # 1. 티커 매핑
-        final_ticker = get_final_ticker(ticker)
-        logger.info(f"Analyzing mapped ticker: {final_ticker} (Input: {ticker})")
-        
-        # 종목명 가져오기 (yf.Ticker 사용)
-        import yfinance as yf
-        display_name = final_ticker
-        try:
-            stock = yf.Ticker(final_ticker)
-            # info 호출은 느릴 수 있으므로, fast_info나 다른 대안을 고려할 수 있지만 일단 info 사용
-            info = stock.info
-            name = info.get('longName') or info.get('shortName') or final_ticker
-            display_name = f"{name} ({final_ticker})"
-        except:
-            pass
+        stock = yf.Ticker(final_ticker)
+        info = stock.info
+        name = info.get('longName') or info.get('shortName') or final_ticker
+        display_name = f"{name} ({final_ticker})"
+    except:
+        pass
 
-        # 2. 데이터 수집
-        daily_df = collector.get_ohlcv(final_ticker, period="1y", interval="1d")
-        hourly_df = collector.get_ohlcv(final_ticker, period="60d", interval="60m")
+    # 2. 데이터 수집
+    daily_df = collector.get_ohlcv(final_ticker, period="1y", interval="1d")
+    hourly_df = collector.get_ohlcv(final_ticker, period="60d", interval="60m")
+    
+    if daily_df is None or daily_df.empty:
+        raise HTTPException(status_code=404, detail=f"[{final_ticker}] 데이터를 찾을 수 없습니다.")
         
-        if daily_df is None or daily_df.empty:
-            raise HTTPException(status_code=404, detail=f"[{final_ticker}] 데이터를 찾을 수 없습니다.")
-            
-        # 3. 재무 데이터 수집 (매핑된 티커 사용)
+    # 3. 재무 데이터 수집
+    financials = storage.get_financials(final_ticker)
+    if not financials:
+        parser.fetch_and_save_financials(final_ticker)
         financials = storage.get_financials(final_ticker)
-        if not financials:
-            parser.fetch_and_save_financials(final_ticker)
-            financials = storage.get_financials(final_ticker)
-            
-        # 4. 종합 스마트 분석 실행
-        analysis_result = analyst.analyze_ticker(final_ticker, daily_df, financials, hourly_df)
-        analysis_result['display_name'] = display_name
         
-        # 5. 이벤트 정보 추가
-        events = get_stock_events(final_ticker)
-        analysis_result['events'] = events
-        
-        return safe_serialize(analysis_result)
-        
+    # 4. 종합 스마트 분석 실행
+    analysis_result = analyst.analyze_ticker(final_ticker, daily_df, financials, hourly_df)
+    analysis_result['display_name'] = display_name
+    
+    # 5. 이벤트 정보 추가
+    events = get_stock_events(final_ticker)
+    analysis_result['events'] = events
+    
+    return safe_serialize(analysis_result)
+
+@app.post("/analyze")
+async def analyze_post(req: AnalysisRequest):
+    """POST 방식 분석 엔드포인트"""
+    try:
+        return await run_analysis(req.ticker)
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/analyze/{ticker}")
+async def analyze_get(ticker: str):
+    """GET 방식 분석 엔드포인트 (기존 호환성)"""
+    try:
+        return await run_analysis(ticker)
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logger.error(f"Analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -219,17 +235,21 @@ async def get_history(ticker: str, interval: str = "1d"):
         bb_df = ta.calculate_bollinger(calc_df)
         calc_df = calc_df.join(bb_df)
 
-        history = []
-        # JSON 직렬화를 위해 정렬 보장
+        # 인덱스를 Datetime으로 확실히 변환 (정렬 및 시간 추출을 위해)
+        if not isinstance(calc_df.index, pd.DatetimeIndex):
+            calc_df.index = pd.to_datetime(calc_df.index)
+        
+        # NaT 인덱스 제거
+        calc_df = calc_df[calc_df.index.notnull()]
+        
+        # JSON 직렬화를 위해 오름차순 정렬 보장
         calc_df.sort_index(inplace=True)
         
+        history = []
         for idx, row in calc_df.iterrows():
             # 인덱스가 날짜이므로 직접 변환
             try:
-                if hasattr(idx, 'strftime'):
-                    time_val = idx.strftime('%Y-%m-%d %H:%M:%S' if interval != '1d' else '%Y-%m-%d')
-                else:
-                    time_val = str(idx)
+                time_val = idx.strftime('%Y-%m-%d %H:%M:%S' if actual_interval != '1d' else '%Y-%m-%d')
             except:
                 time_val = str(idx)
 
