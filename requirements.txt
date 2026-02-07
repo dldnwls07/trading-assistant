@@ -9,3 +9,5 @@ matplotlib
 mplfinance
 python-dotenv
 Pillow
+fastapi
+uvicorn

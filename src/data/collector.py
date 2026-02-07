@@ -3,7 +3,7 @@ import pandas as pd
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 from .storage import DataStorage
 
 # Setup logger
@@ -22,48 +22,69 @@ class MarketDataCollector:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.db = DataStorage() if use_db else None
         
-    def get_ohlcv(self, ticker: str, period: str = "1y", interval: str = "1d") -> Optional[pd.DataFrame]:
+    def get_smart_data(self, ticker: str) -> Dict[str, Optional[pd.DataFrame]]:
         """
-        Fetches OHLCV data for a given ticker with a specific interval.
-        
-        Args:
-            ticker: Stock symbol (e.g., 'AAPL')
-            period: Data period (e.g., '1y', 'max', '5d')
-            interval: Data interval (e.g., '1m', '5m', '1h', '1d', '1wk')
-            
-        Returns:
-            DataFrame with OHLCV data or None if failed.
+        Smart Analysis를 위한 멀티 타임프레임 데이터(일봉 + 1시간봉)를 한 번에 수집
         """
-        try:
-            logger.info(f"Fetching {interval} data for {ticker} (Period: {period})...")
-            stock = yf.Ticker(ticker)
-            df = stock.history(period=period, interval=interval)
-            
-            if df.empty:
-                logger.warning(f"No data found for {ticker} with interval {interval}")
-                return None
+        results = {
+            "daily": self.get_ohlcv(ticker, period="1y", interval="1d"),
+            "hourly": self.get_ohlcv(ticker, period="60d", interval="60m")
+        }
+        return results
+
+    def get_ohlcv(self, ticker: str, period: str = "1y", interval: str = "1d", retries: int = 3) -> Optional[pd.DataFrame]:
+        """
+        OHLCV 데이터를 수집하며, 실패 시 재시도 로직을 포함함.
+        """
+        for attempt in range(retries):
+            try:
+                logger.info(f"Fetching {interval} data for {ticker} (Attempt {attempt+1}/{retries})...")
+                stock = yf.Ticker(ticker)
+                df = stock.history(period=period, interval=interval)
                 
-            # Clean data
-            df.reset_index(inplace=True)
-            if interval in ["1d", "1wk", "1mo"]:
-                df['Date'] = pd.to_datetime(df['Date']).dt.date
-            else:
-                # 분/시간 데이터는 시간 정보가 중요함
-                df['Date'] = pd.to_datetime(df['Date'])
-            
-            # Save to CSV for cache/inspection
-            save_path = self.data_dir / f"{ticker}_{interval}.csv"
-            df.to_csv(save_path, index=False)
-            
-            # Save to DB (Intraday 데이터는 DB 스키마 확장이 필요할 수 있으나 일단 저장 시도)
-            if self.db and interval in ["1d", "1wk"]:
-                self.db.save_price_history(ticker, df)
+                # [방어코드] yfinance 반환값 검증
+                if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+                    if attempt < retries - 1:
+                        time.sleep(1)
+                        continue
+                    logger.warning(f"No data found for {ticker} with interval {interval}")
+                    return None
+                    
+                # Clean data
+                df.index.name = 'Date'
+                df.reset_index(inplace=True)
                 
-            return df
-            
-        except Exception as e:
-            logger.error(f"Error fetching data for {ticker}: {e}")
-            return None
+                # 날짜 타입 변환
+                if 'Date' in df.columns:
+                    try:
+                        if interval in ["1d", "1wk", "1mo"]:
+                            df['Date'] = pd.to_datetime(df['Date']).dt.date
+                        else:
+                            df['Date'] = pd.to_datetime(df['Date'])
+                    except Exception as e:
+                        logger.warning(f"Date conversion failed: {e}")
+
+                # Save to CSV
+                save_path = self.data_dir / f"{ticker}_{interval}.csv"
+                df.to_csv(save_path, index=False)
+                
+                # DB 저장 (에러 무시)
+                try:
+                    if self.db and interval in ["1d"]:
+                        self.db.save_price_history(ticker, df)
+                except:
+                    pass
+                    
+                return df
+                
+            except Exception as e:
+                logger.error(f"Error on attempt {attempt+1}: {e}")
+                if attempt < retries - 1:
+                    import time
+                    time.sleep(1)
+                else:
+                    return None
+        return None
 
     def get_market_status(self) -> str:
         """

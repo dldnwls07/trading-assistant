@@ -47,7 +47,9 @@ class TechnicalAnalyzer:
         }
 
     def detect_patterns(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
-        """주요 차트 패턴 감지 (쌍바닥, 삼각형 등)"""
+        """
+        주요 차트 패턴 감지 (보내주신 이미지 기준 고도화)
+        """
         patterns = []
         if len(df) < 60:
             return patterns
@@ -56,53 +58,89 @@ class TechnicalAnalyzer:
         low = df['Low'].values
         high = df['High'].values
         
-        # 1. 쌍바닥 (Double Bottom) 감지
-        # 최근 40일 내의 저점 2개가 비슷한 수준인지 확인
-        window = 40
-        recent_lows = df['Low'].tail(window)
-        # 국소 저점 찾기 (간단한 방식)
-        l_min1_idx = recent_lows.iloc[:window//2].idxmin()
-        l_min2_idx = recent_lows.iloc[window//2:].idxmin()
+        # --- 1. 바닥 패턴: 쌍바닥 (Double Bottom) ---
+        window = 60  # 60일로 범위 확대
+        section = df.tail(window)
+        # 구간을 절반으로 나누어 각각의 최저점 탐색
+        l_min1_idx = section.iloc[:window//2]['Low'].idxmin()
+        l_min2_idx = section.iloc[window//2:]['Low'].idxmin()
+        val1, val2 = df.loc[l_min1_idx, 'Low'], df.loc[l_min2_idx, 'Low']
         
-        val1 = df.loc[l_min1_idx, 'Low']
-        val2 = df.loc[l_min2_idx, 'Low']
-        
-        # 두 저점의 가격 차이가 2% 이내이고, 그 사이 고점이 저점보다 높을 때
         if abs(val1 - val2) / val1 < 0.02:
-            mid_slice = df.loc[l_min1_idx:l_min2_idx, 'High']
-            if not mid_slice.empty and mid_slice.max() > max(val1, val2) * 1.02:
+            mid_h = df.loc[l_min1_idx:l_min2_idx, 'High'].max()
+            if mid_h > max(val1, val2) * 1.03:
                 patterns.append({
-                    "name": "쌍바닥 (Double Bottom)",
+                    "name": "쌍바닥 (W패턴)",
                     "type": "bullish_reversal",
-                    "confidence": 0.8,
-                    "desc": "📉 가격이 비슷한 두 지점에서 반등했습니다. 강한 바닥 신호입니다."
+                    "desc": "가격이 두 번 바닥을 다지고 반등했습니다. 강력한 매수 신호입니다."
                 })
 
-        # 2. 상승 삼각형 (Ascending Triangle) 감지
-        # 고점은 일정하고 저점은 높아지는 패턴
-        recent = df.tail(30)
-        highs = recent['High'].values
-        lows = recent['Low'].values
+        # --- 2. 천장 패턴: 쌍봉 (Double Top) ---
+        l_max1_idx = section.iloc[:window//2]['High'].idxmax()
+        l_max2_idx = section.iloc[window//2:]['High'].idxmax()
+        h_val1, h_val2 = df.loc[l_max1_idx, 'High'], df.loc[l_max2_idx, 'High']
         
-        # 저점 추세 확인 (선형 회귀 대신 간단한 비교)
-        low_trend = (lows[-1] > lows[0]) and (lows[len(lows)//2] > lows[0])
-        # 고점 정체 확인
-        high_std = np.std(highs) / np.mean(highs)
-        
-        if low_trend and high_std < 0.015:
+        if abs(h_val1 - h_val2) / h_val1 < 0.02:
+            mid_l = df.loc[l_max1_idx:l_max2_idx, 'Low'].min()
+            if mid_l < min(h_val1, h_val2) * 0.97:
+                patterns.append({
+                    "name": "쌍봉 (M패턴)",
+                    "type": "bearish_reversal",
+                    "desc": "고점에서 두 번 저항을 받았습니다. 하락 반전 가능성이 높습니다."
+                })
+
+        # --- 3. 수렴 패턴: 상승 삼각형 (Ascending Triangle) ---
+        recent = df.tail(20)
+        h_std = np.std(recent['High']) / np.mean(recent['High'])
+        low_trend = recent['Low'].iloc[-1] > recent['Low'].iloc[0]
+        if h_std < 0.015 and low_trend:
             patterns.append({
-                "name": "상승 삼각형 (Ascending Triangle)",
+                "name": "상승 삼각형",
                 "type": "bullish_continuation",
-                "confidence": 0.7,
-                "desc": "📐 고저항선은 일정하고 저점이 높아지고 있습니다. 상향 돌파 가능성이 높습니다."
+                "desc": "고항선은 유지되나 저점이 높아집니다. 상향 돌파가 임박했습니다."
             })
+
+        # --- 4. 반전 패턴: 헤드 앤 숄더 (Head & Shoulders) ---
+        # 60일 내에서 왼쪽 어깨, 머리, 오른쪽 어깨 감지
+        if len(df) >= 60:
+            s60 = df.tail(60)
+            p1 = s60.iloc[0:20]['High'].idxmax()
+            p2 = s60.iloc[20:40]['High'].idxmax()
+            p3 = s60.iloc[40:60]['High'].idxmax()
+            v1, v2, v3 = df.loc[p1, 'High'], df.loc[p2, 'High'], df.loc[p3, 'High']
             
+            if v2 > v1 * 1.03 and v2 > v3 * 1.03 and abs(v1-v3)/v1 < 0.04:
+                patterns.append({
+                    "name": "헤드 앤 숄더",
+                    "type": "bearish_reversal",
+                    "desc": "전형적인 고점 신호입니다. 어깨 라인 이탈 시 급락 위험이 있습니다."
+                })
+        
+        # --- 5. 상승 패턴: 상승 플래그 (Bullish Flag) ---
+        # 급등(폴) 후 완만한 하락(플래그)
+        pole_start = df.iloc[-15:-5]
+        pole_height = pole_start['Close'].max() - pole_start['Close'].min()
+        flag_section = df.tail(5)
+        flag_drop = flag_section['High'].max() - flag_section['Low'].min()
+        
+        if pole_height > (df.iloc[-15]['Close'] * 0.05) and flag_drop < (pole_height * 0.5):
+            if flag_section['Close'].iloc[-1] > flag_section['Close'].iloc[0]:
+                patterns.append({
+                    "name": "상승 플래그",
+                    "type": "bullish_continuation",
+                    "desc": "강한 상승 후 잠시 쉬어가는 구간입니다. 재차 급등 가능성이 높습니다."
+                })
+
         return patterns
 
     def analyze(self, df: pd.DataFrame) -> Dict[str, Any]:
         """상세 기술적 분석 수행"""
         if df is None or len(df) < 30:
-            return {"score": 50, "summary": "데이터 부족", "details": [], "entry_points": {}}
+            return {
+                "score": 50, "rsi": 50, "macd": 0, "signal": 0,
+                "summary": "데이터 부족", "details": ["분석을 위한 충분한 데이터(최소 30일)가 부족합니다."],
+                "entry_points": {}, "patterns": []
+            }
             
         df = df.copy()
         df['RSI'] = self.calculate_rsi(df)
@@ -225,8 +263,12 @@ class TechnicalAnalyzer:
             'buy_target_2': levels['support'],
             'sell_target_1': bb_upper,
             'sell_target_2': levels['resistance'],
-            'stop_loss': levels['support'] * 0.97,  # 지지선 -3%
-            'current_price': current_price
+            'stop_loss': levels['support'] * 0.97,
+            'current_price': current_price,
+            # UI 호환용 단축 키
+            'buy': f"{bb_lower:,.0f}",
+            'target': f"{bb_upper:,.0f}",
+            'stop': f"{levels['support'] * 0.97:,.0f}"
         }
         
         # 타점 설명 추가
@@ -244,10 +286,12 @@ class TechnicalAnalyzer:
             "score": score,
             "rsi": rsi,
             "macd": macd_val,
+            "signal": signal_val,
             "current_price": current_price,
             "summary": "; ".join(reasons) if reasons else "중립",
             "details": details,
-            "entry_points": entry_points
+            "entry_points": entry_points,
+            "patterns": patterns
         }
 
 class FundamentalAnalyzer:
@@ -331,63 +375,141 @@ class StockAnalyst:
         self.tech = TechnicalAnalyzer()
         self.fund = FundamentalAnalyzer()
         
-    def analyze_ticker(self, ticker: str, price_history: pd.DataFrame, financials: list[Any]) -> Dict[str, Any]:
-        t_res = self.tech.analyze(price_history)
-        f_res = self.fund.analyze(financials)
+    def analyze_ticker(self, ticker: str, daily_df: pd.DataFrame, financials: list = None, hourly_df: pd.DataFrame = None) -> dict:
+        """
+        Daily(추세) + Hourly(타점) 복합 스마트 분석
+        """
+        res = {
+            "ticker": ticker,
+            "daily_analysis": self._analyze_df(daily_df),
+            "hourly_analysis": self._analyze_df(hourly_df) if hourly_df is not None else None,
+            "fundamental": self._analyze_fundamentals(financials) if financials else {"score": 50, "summary": "재무 데이터 없음"},
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
         
-        # 가중 점수 (기술 60%, 기본 40%)
-        final_score = (t_res['score'] * 0.6) + (f_res['score'] * 0.4)
+        # 종합 점수 산출 (Danelfin/Fint 스타일)
+        res["final_score"] = self._calculate_smart_score(res)
+        res["signal"] = self._get_signal_text(res["final_score"])
         
-        # 신호 결정 (순서 수정: 높은 점수부터 체크)
-        if final_score >= 85:
-            signal = "🔥 강력 매수"
-            signal_desc = "기술적/기본적 지표 모두 매우 긍정적입니다. 적극 매수를 고려하세요."
-        elif final_score >= 70:
-            signal = "📈 매수"
-            signal_desc = "긍정적인 신호가 우세합니다. 분할 매수를 고려해보세요."
-        elif final_score >= 55:
-            signal = "🟡 관망"
-            signal_desc = "뚜렷한 방향성이 없습니다. 추가 신호를 기다리세요."
-        elif final_score >= 40:
-            signal = "⚠️ 주의"
-            signal_desc = "부정적 신호가 나타나고 있습니다. 신규 매수를 자제하세요."
-        elif final_score >= 25:
-            signal = "📉 매도"
-            signal_desc = "하락 신호가 우세합니다. 보유 시 손절/익절을 고려하세요."
-        else:
-            signal = "🔻 강력 매도"
-            signal_desc = "강한 하락 신호입니다. 즉시 포지션 정리를 권장합니다."
+        # 매수/매도 타점 제안
+        res["entry_points"] = self._calculate_entry_points(daily_df, hourly_df)
+        
+        # 상세 리포트 생성
+        res["full_report"] = self._generate_full_report(res)
+
+        return res
+
+    def _analyze_df(self, df: pd.DataFrame) -> dict:
+        if df is None or df.empty: return None
+        
+        # 기존 TechnicalAnalyzer의 analyze 메서드를 사용하여 지표 계산
+        tech_analysis_result = self.tech.analyze(df)
+        
+        analysis = {
+            "last_close": float(df['Close'].iloc[-1]),
+            "score": tech_analysis_result['score'],
+            "rsi": tech_analysis_result['rsi'],
+            "macd": {'MACD': tech_analysis_result['macd'], 'Signal': tech_analysis_result['signal']},
+            "summary": tech_analysis_result['summary'],
+            "details": tech_analysis_result['details'],
+            "patterns": tech_analysis_result['patterns'],
+            "entry_points": tech_analysis_result['entry_points']
+        }
+        return analysis
+
+    def _analyze_fundamentals(self, financials: list[Any]) -> Dict[str, Any]:
+        return self.fund.analyze(financials)
+
+    def _calculate_smart_score(self, res: dict) -> int:
+        score = 50
+        daily = res["daily_analysis"]
+        hourly = res["hourly_analysis"]
+        
+        # Daily analysis contributes to overall trend (e.g., 40% weight)
+        if daily:
+            # Use the score from TechnicalAnalyzer for daily data as a base
+            score += (daily["score"] - 50) * 0.4 # Adjust based on daily score deviation from 50
+            
+            # Additional specific daily indicators
+            rsi_d = daily.get("rsi")
+            if rsi_d is not None:
+                if rsi_d < 30: score += 5
+                if rsi_d > 70: score -= 5
+            
+            macd_d = daily.get("macd")
+            if macd_d and macd_d.get("MACD") is not None and macd_d.get("Signal") is not None:
+                if macd_d["MACD"] > macd_d["Signal"]: score += 5
+            
+            # Pattern weighting
+            for p in daily["patterns"]:
+                if p["type"] == "bullish_reversal" or p["type"] == "bullish_continuation": score += 5
+                if p["type"] == "bearish": score -= 5
+
+        # Hourly analysis contributes to entry/exit timing (e.g., 30% weight)
+        if hourly:
+            # Use the score from TechnicalAnalyzer for hourly data
+            score += (hourly["score"] - 50) * 0.3 # Adjust based on hourly score deviation from 50
+
+            # Additional specific hourly indicators for timing
+            rsi_h = hourly.get("rsi")
+            if rsi_h is not None and rsi_h < 35: score += 5
+            
+            macd_h = hourly.get("macd")
+            if macd_h and macd_h.get("MACD") is not None and macd_h.get("Signal") is not None:
+                if macd_h["MACD"] > macd_h["Signal"]: score += 3
+            
+        # Fundamental analysis contributes to long-term value (e.g., 30% weight)
+        fund_score = res["fundamental"].get("score", 50)
+        score += (fund_score - 50) * 0.3 # Adjust based on fundamental score deviation from 50
+        
+        return int(max(0, min(100, score)))
+
+    def _get_signal_text(self, score: int) -> str:
+        if score >= 85: return "🚀 강력 매수 (Strong Buy)"
+        if score >= 65: return "📈 매수 권고 (Buy)"
+        if score >= 45: return "💬 중립 (Neutral)"
+        if score >= 25: return "📉 매도 권고 (Sell)"
+        return "⚠️ 강력 매도 (Strong Sell)"
+
+    def _calculate_entry_points(self, daily_df: pd.DataFrame, hourly_df: pd.DataFrame) -> Dict[str, Any]:
+        # Prioritize hourly entry points if available, otherwise use daily
+        if hourly_df is not None and not hourly_df.empty:
+            hourly_tech_res = self.tech.analyze(hourly_df)
+            return hourly_tech_res.get('entry_points', {})
+        elif daily_df is not None and not daily_df.empty:
+            daily_tech_res = self.tech.analyze(daily_df)
+            return daily_tech_res.get('entry_points', {})
+        return {}
+
+    def _generate_full_report(self, res: dict) -> str:
+        ticker = res["ticker"]
+        signal = res["signal"]
+        final_score = res["final_score"]
+        daily = res["daily_analysis"]
+        fundamental = res["fundamental"]
         
         # 상세 리포트 생성
         full_report = []
         full_report.append(f"═══════════════════════════════════════")
-        full_report.append(f"📊 {ticker} 종합 분석 리포트")
+        full_report.append(f"📊 {ticker} Smart Analysis Report")
         full_report.append(f"═══════════════════════════════════════")
         full_report.append(f"")
         full_report.append(f"🎯 종합 판단: {signal}")
-        full_report.append(f"📊 종합 점수: {final_score:.1f}/100")
+        full_report.append(f"📊 AI 확률 스코어: {final_score}/100")
         full_report.append(f"")
-        full_report.append(f"💡 {signal_desc}")
-        full_report.append(f"")
-        full_report.append(f"───────────────────────────────────────")
-        full_report.append(f"📈 기술적 분석 (점수: {t_res['score']}/100)")
-        full_report.append(f"───────────────────────────────────────")
-        for detail in t_res.get('details', []):
-            full_report.append(detail)
-        full_report.append(f"")
-        full_report.append(f"───────────────────────────────────────")
-        full_report.append(f"📋 기본적 분석 (점수: {f_res['score']}/100)")
-        full_report.append(f"───────────────────────────────────────")
-        for detail in f_res.get('details', []):
-            full_report.append(detail)
         
-        return {
-            "ticker": ticker,
-            "signal": signal,
-            "signal_desc": signal_desc,
-            "final_score": round(final_score, 1),
-            "technical": t_res,
-            "fundamental": f_res,
-            "full_report": "\n".join(full_report),
-            "entry_points": t_res.get('entry_points', {})
-        }
+        if daily:
+            full_report.append(f"───────────────────────────────────────")
+            full_report.append(f"📉 기술적 분석 지표 (일봉)")
+            full_report.append(f"───────────────────────────────────────")
+            for detail in daily.get('details', []):
+                full_report.append(detail)
+            
+        full_report.append(f"")
+        full_report.append(f"───────────────────────────────────────")
+        full_report.append(f"📋 기본적 분석 (재무제표)")
+        full_report.append(f"───────────────────────────────────────")
+        for detail in fundamental.get('details', []):
+            full_report.append(detail)
+            
+        return "\n".join(full_report)

@@ -101,9 +101,6 @@ def validate_config():
     if not HF_TOKEN or HF_TOKEN == "your_huggingface_token_here":
         warnings.append("HF_TOKEN이 설정되지 않았습니다. AI 분석 기능이 제한됩니다.")
     
-    if ALPACA_API_KEY and ALPACA_API_KEY.startswith("PK"):
-        warnings.append("Alpaca API Key가 노출된 것 같습니다. 재발급을 권장합니다.")
-    
     return warnings
 
 # 모듈 로드 시 검증
