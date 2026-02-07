@@ -23,8 +23,8 @@ build/
 # Data & DB
 *.db
 *.sqlite
-data/
-datasets/
+/data/
+/datasets/
 *.sqlite3
 
 # Logs
