@@ -60,80 +60,91 @@ class AnalysisResponse(BaseModel):
 async def root():
     return {"status": "ok", "message": "Trading Assistant Server is running"}
 
+def get_final_ticker(ticker: str) -> str:
+    """종목명이나 숫자를 yfinance 티커(symbol)로 변환"""
+    import yfinance as yf
+    
+    # 1. 이미 규격에 맞는 티커인 경우 바로 반환
+    if ticker.endswith(('.KS', '.KQ')) or (ticker.isupper() and len(ticker) <= 5):
+        return ticker
+
+    # 2. 숫자로만 된 6자리 코드라면 .KS 자동 부여
+    if ticker.isdigit() and len(ticker) == 6:
+        return f"{ticker}.KS"
+
+    # 3. 하드 매핑 체크
+    korean_map = {
+        "삼성전자": "005930.KS", "삼성전자우": "005935.KS",
+        "sk하이닉스": "000660.KS", "하이닉스": "000660.KS",
+        "에코프로": "086520.KQ", "에코프로비엠": "247540.KQ",
+        "카카오": "035720.KS", "네이버": "035420.KS",
+        "현대차": "005380.KS", "기아": "000270.KS",
+        "셀트리온": "068270.KS", "포스코홀딩스": "005490.KS",
+        "lg에너지솔루션": "373220.KS", "삼성sdi": "006400.KS"
+    }
+    if ticker in korean_map:
+        return korean_map[ticker]
+
+    # 4. 검색 API 시도
+    try:
+        is_korean = any(ord('가') <= ord(char) <= ord('힣') for char in ticker)
+        search = yf.Search(ticker, max_results=5)
+        quotes = search.quotes
+        if quotes:
+            if is_korean:
+                for res in quotes:
+                    sym = res.get('symbol', '')
+                    if sym.endswith(('.KS', '.KQ')):
+                        return sym
+            return quotes[0].get('symbol', ticker)
+    except Exception as e:
+        logger.error(f"Ticker mapping error for {ticker}: {e}")
+    
+    return ticker
+
 @app.get("/analyze/{ticker}")
 async def analyze_ticker(ticker: str):
     """
     Smart Analysis 수행 (Daily + Hourly + AI)
-    - 종목명(삼성전자) 입력 시 자동으로 티커(005930.KS) 매핑
     """
     try:
-        # 1. 티커 매핑 (종목명 -> 티커)
-        final_ticker = ticker
+        # 1. 티커 매핑
+        final_ticker = get_final_ticker(ticker)
+        logger.info(f"Analyzing mapped ticker: {final_ticker} (Input: {ticker})")
+        
+        # 종목명 가져오기 (yf.Ticker 사용)
         import yfinance as yf
-        
-        # 한국어 포함 여부 체크
-        is_korean = any(ord('가') <= ord(char) <= ord('힣') for char in ticker)
-        
-        # [특별 조치] 자주 검색하는 한글 종목 하드 매핑 (yf.Search 실패 대비)
-        korean_map = {
-            "삼성전자": "005930.KS",
-            "삼성전자우": "005935.KS",
-            "sk하이닉스": "000660.KS",
-            "하이닉스": "000660.KS",
-            "에코프로": "086520.KQ",
-            "에코프로비엠": "247540.KQ",
-            "카카오": "035720.KS",
-            "네이버": "035420.KS",
-            "현대차": "005380.KS",
-            "기아": "000270.KS"
-        }
-        
-        if ticker in korean_map:
-            final_ticker = korean_map[ticker]
-            logger.info(f"Direct mapping hit: {ticker} -> {final_ticker}")
-        else:
-            try:
-                search = yf.Search(ticker, max_results=8)
-                quotes = search.quotes
-                if quotes:
-                    if is_korean:
-                        for res in quotes:
-                            sym = res.get('symbol', '')
-                            if sym.endswith('.KS') or sym.endswith('.KQ'):
-                                final_ticker = sym
-                                logger.info(f"Searched Korean stock: {ticker} -> {final_ticker}")
-                                break
-                        else:
-                            final_ticker = quotes[0].get('symbol', ticker)
-                    else:
-                        final_ticker = quotes[0].get('symbol', ticker)
-            except Exception as e:
-                logger.error(f"Ticker Search API failed: {e}")
+        display_name = final_ticker
+        try:
+            stock = yf.Ticker(final_ticker)
+            # info 호출은 느릴 수 있으므로, fast_info나 다른 대안을 고려할 수 있지만 일단 info 사용
+            info = stock.info
+            name = info.get('longName') or info.get('shortName') or final_ticker
+            display_name = f"{name} ({final_ticker})"
+        except:
+            pass
 
-        logger.info(f"Smart Analyzing {final_ticker} (Original: {ticker})...")
-        
         # 2. 데이터 수집
         daily_df = collector.get_ohlcv(final_ticker, period="1y", interval="1d")
         hourly_df = collector.get_ohlcv(final_ticker, period="60d", interval="60m")
         
         if daily_df is None or daily_df.empty:
-            logger.error(f"Data collection failed for final_ticker: {final_ticker}")
-            raise HTTPException(status_code=404, detail=f"[{final_ticker}] 종목 데이터를 찾을 수 없습니다. 정확한 티커(예: AAPL, 005930.KS)를 입력해 보세요.")
+            raise HTTPException(status_code=404, detail=f"[{final_ticker}] 데이터를 찾을 수 없습니다.")
             
-        # 2. 재무 데이터 수집
-        financials = storage.get_financials(ticker)
+        # 3. 재무 데이터 수집 (매핑된 티커 사용)
+        financials = storage.get_financials(final_ticker)
         if not financials:
-            parser.fetch_and_save_financials(ticker)
-            financials = storage.get_financials(ticker)
+            parser.fetch_and_save_financials(final_ticker)
+            financials = storage.get_financials(final_ticker)
             
-        # 3. 종합 스마트 분석 실행
-        analysis_result = analyst.analyze_ticker(ticker, daily_df, financials, hourly_df)
+        # 4. 종합 스마트 분석 실행
+        analysis_result = analyst.analyze_ticker(final_ticker, daily_df, financials, hourly_df)
+        analysis_result['display_name'] = display_name
         
-        # 4. 이벤트 정보 추가
-        events = get_stock_events(ticker)
+        # 5. 이벤트 정보 추가
+        events = get_stock_events(final_ticker)
         analysis_result['events'] = events
         
-        # 5. 응답 구성 (JSON 직렬화)
         return safe_serialize(analysis_result)
         
     except Exception as e:
@@ -146,34 +157,77 @@ async def get_history(ticker: str, interval: str = "1d"):
     차트 시각화를 위한 OHLCV 데이터 반환
     """
     try:
-        period = "1y" if interval == "1d" else "60d"
-        df = collector.get_ohlcv(ticker, period=period, interval=interval)
+        # 티커 매핑 수행 (한글명 -> 티커)
+        final_ticker = get_final_ticker(ticker)
         
+        # 인터벌에 따른 적절한 데이터 기간(period) 설정
+        period_map = {
+            "1m": "1d",
+            "5m": "5d",
+            "15m": "7d",
+            "30m": "30d",
+            "60m": "60d",
+            "1h": "60d",
+            "4h": "120d", # yfinance는 4h를 직접 지원하지 않으므로 1h를 가져가나 기간을 늘림
+            "1d": "2y",
+            "1wk": "max",
+            "1mo": "max",
+            "1y": "max"  # 1y 캔들은 없으므로 1mo 사용 후 프론트에서 처리
+        }
+        period = period_map.get(interval, "1y")
+        
+        # 4h 요청 시 yfinance 대응을 위해 1h로 변경 (데이터는 충분히 가져옴)
+        actual_interval = "1h" if interval == "4h" else ("1mo" if interval == "1y" else interval)
+        
+        # 소문자 접미사 대문자로 정규화
+        if final_ticker.endswith('.ks'): final_ticker = final_ticker[:-3] + '.KS'
+        if final_ticker.endswith('.kq'): final_ticker = final_ticker[:-3] + '.KQ'
+
+        df = collector.get_ohlcv(final_ticker, period=period, interval=actual_interval)
+        
+        # 데이터가 없는 경우 상위 인터벌로 대체 시도
+        if (df is None or df.empty) and interval in ["1m", "5m", "15m", "30m", "60m"]:
+            logger.info(f"Interval {interval} failed for {ticker}, falling back to daily.")
+            df = collector.get_ohlcv(final_ticker, period="1y", interval="1d")
+            interval = "1d"
+
         if df is None or df.empty:
-            return {"ticker": ticker, "data": []}
+            return {"ticker": final_ticker, "data": []}
             
-        # Lightweight Charts 포맷 {time, open, high, low, close}
-        history = []
-        df = df.sort_index() # 시간 순서 보장
+        # 기술적 지표 계산 (TechnicalAnalyzer 활용)
+        from src.agents.analyst import TechnicalAnalyzer
+        ta = TechnicalAnalyzer()
         
-        for idx, row in df.iterrows():
-            # 타임스탬프 처리 (날짜 형식 보장)
+        # 지표 추가를 위한 데이터프레임 복사 및 연산
+        calc_df = df.copy()
+        if 'Date' in calc_df.columns:
+            calc_df.set_index(pd.to_datetime(calc_df['Date']), inplace=True)
+        
+        # 이동평균선
+        calc_df['sma20'] = calc_df['Close'].rolling(window=20).mean()
+        calc_df['sma50'] = calc_df['Close'].rolling(window=50).mean()
+        calc_df['sma200'] = calc_df['Close'].rolling(window=200).mean()
+        
+        # RSI
+        calc_df['rsi'] = ta.calculate_rsi(calc_df)
+        
+        # MACD
+        macd_df = ta.calculate_macd(calc_df)
+        calc_df = calc_df.join(macd_df)
+        
+        # 볼린저 밴드
+        bb_df = ta.calculate_bollinger(calc_df)
+        calc_df = calc_df.join(bb_df)
+
+        history = []
+        # JSON 직렬화를 위해 다시 정리
+        calc_df.reset_index(drop=True, inplace=True)
+        
+        for _, row in calc_df.iterrows():
             try:
-                if hasattr(idx, 'strftime'):
-                    time_val = idx.strftime("%Y-%m-%d")
-                elif isinstance(idx, (int, float, str)) and interval == "1d":
-                    # 인덱스가 숫자인 경우 (DB 유실 등), 실제 날짜 컬럼이 있는지 확인
-                    if 'Date' in row:
-                        date_obj = pd.to_datetime(row['Date'])
-                        time_val = date_obj.strftime("%Y-%m-%d")
-                    else:
-                        # 최후의 수단: 인덱스로부터 날짜 유추 (오늘부터 역산)
-                        from datetime import datetime, timedelta
-                        time_val = (datetime.now() - timedelta(days=len(df)-1-int(idx))).strftime("%Y-%m-%d")
-                else:
-                    time_val = int(idx.timestamp()) if hasattr(idx, 'timestamp') else int(time.time())
+                time_val = str(row['Date'])
             except:
-                time_val = str(idx)
+                time_val = "Unknown"
 
             history.append({
                 "time": time_val,
@@ -181,10 +235,20 @@ async def get_history(ticker: str, interval: str = "1d"):
                 "high": float(row["High"]),
                 "low": float(row["Low"]),
                 "close": float(row["Close"]),
-                "volume": float(row["Volume"])
+                "volume": float(row["Volume"]),
+                # 지표 데이터 추가 (NaN 처리 포함)
+                "sma20": float(row["sma20"]) if not pd.isna(row["sma20"]) else None,
+                "sma50": float(row["sma50"]) if not pd.isna(row["sma50"]) else None,
+                "sma200": float(row["sma200"]) if not pd.isna(row["sma200"]) else None,
+                "rsi": float(row["rsi"]) if not pd.isna(row["rsi"]) else None,
+                "macd": float(row["MACD"]) if not pd.isna(row["MACD"]) else None,
+                "macd_signal": float(row["Signal"]) if not pd.isna(row["Signal"]) else None,
+                "macd_hist": float(row["Hist"]) if not pd.isna(row["Hist"]) else None,
+                "bb_upper": float(row["BB_Upper"]) if not pd.isna(row["BB_Upper"]) else None,
+                "bb_lower": float(row["BB_Lower"]) if not pd.isna(row["BB_Lower"]) else None,
             })
             
-        return {"ticker": ticker, "interval": interval, "data": history}
+        return {"ticker": final_ticker, "interval": interval, "data": history}
     except Exception as e:
         logger.error(f"History error: {e}")
         return {"ticker": ticker, "data": [], "error": str(e)}
@@ -192,22 +256,31 @@ async def get_history(ticker: str, interval: str = "1d"):
 @app.get("/search")
 async def search_ticker(query: str):
     """
-    티커 검색 (종목명 -> 티커 변환)
+    티커 검색 (Autocomplete용)
     """
     try:
         import yfinance as yf
-        search = yf.Search(query, max_results=5)
+        if not query or len(query) < 1:
+            return {"query": query, "candidates": []}
+            
+        search = yf.Search(query, max_results=8)
         results = search.quotes
         
         candidates = []
         for res in results:
+            sym = res.get("symbol", "")
+            is_kr = sym.endswith((".KS", ".KQ"))
             candidates.append({
-                "symbol": res.get("symbol"),
-                "shortname": res.get("shortname"),
-                "longname": res.get("longname"),
+                "symbol": sym,
+                "name": res.get("shortname") or res.get("longname") or sym,
                 "exchange": res.get("exchange"),
-                "type": res.get("quoteType")
+                "is_korean": is_kr
             })
+            
+        # 한국어 검색어라면 한국 주식을 우선순위로 정렬
+        is_korean_query = any(ord('가') <= ord(char) <= ord('힣') for char in query)
+        if is_korean_query:
+            candidates.sort(key=lambda x: x['is_korean'], reverse=True)
             
         return {"query": query, "candidates": candidates}
         

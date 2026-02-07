@@ -1,128 +1,188 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, CandlestickSeries, ColorType } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, ColorType, HistogramSeries } from 'lightweight-charts';
 
-export const StockChart = ({ data, interval }) => {
+/**
+ * StockChart Component with AI Smart Drawing (Trendlines, Patterns, etc.)
+ */
+export const StockChart = ({ data, interval, options = {}, analysis = null }) => {
     const chartContainerRef = useRef();
     const chartRef = useRef(null);
-    const seriesRef = useRef(null);
     const [localError, setLocalError] = useState(null);
+
+    const {
+        showVolume = true,
+        showGrid = true,
+        showSMA = true,
+        showBB = true,
+        showRSI = false,
+        showMACD = false,
+        showAIQuotes = true,
+        upColor = '#ef4444',
+        downColor = '#3b82f6'
+    } = options;
 
     useEffect(() => {
         if (!chartContainerRef.current) return;
 
-        // 1. 기존 차트 정리 (React StrictMode 대응)
         if (chartRef.current) {
             try { chartRef.current.remove(); } catch (e) { }
             chartRef.current = null;
-            seriesRef.current = null;
         }
 
         const buildChart = () => {
             try {
-                console.log("[CHART] Initializing v5 Chart...");
+                if (!data || data.length === 0) return;
 
-                // 2. 차트 생성
-                const chart = createChart(chartContainerRef.current, {
-                    layout: {
-                        background: { type: ColorType.Solid, color: '#0f172a' },
-                        textColor: '#94a3b8',
-                    },
-                    grid: {
-                        vertLines: { color: '#1e293b' },
-                        horzLines: { color: '#1e293b' },
-                    },
-                    width: chartContainerRef.current.clientWidth,
-                    height: 400,
-                    timeScale: {
-                        borderColor: '#1e293b',
-                        timeVisible: true,
-                        fixLeftEdge: true,
-                    },
-                });
+                // 1. Data Cleaning
+                const sortedData = [...data]
+                    .map(item => ({ ...item, time: item.time || item.Date }))
+                    .filter(item => item.time)
+                    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 
-                // 3. v5 표준 API 적용: addSeries(CandlestickSeries)
-                // v5에서는 addCandlestickSeries() 함수가 direct로 존재하지 않을 수 있습니다.
-                console.log("[CHART] Creating series with CandlestickSeries definition");
-
-                // 안전장치: addCandlestickSeries가 있으면 쓰고, 없으면 addSeries(CandlestickSeries) 사용
-                const series = typeof chart.addCandlestickSeries === 'function'
-                    ? chart.addCandlestickSeries({
-                        upColor: '#ef4444',
-                        downColor: '#3b82f6',
-                        borderVisible: false,
-                        wickUpColor: '#ef4444',
-                        wickDownColor: '#3b82f6',
-                    })
-                    : chart.addSeries(CandlestickSeries, {
-                        upColor: '#ef4444',
-                        downColor: '#3b82f6',
-                        borderVisible: false,
-                        wickUpColor: '#ef4444',
-                        wickDownColor: '#3b82f6',
-                    });
-
-                // 4. 데이터 주입
-                if (data && data.length > 0) {
-                    console.log(`[CHART] Mapping ${data.length} data points to timestamps`);
-                    const seenTimes = new Set();
-                    const processed = data
-                        .map(d => ({
-                            ...d,
-                            // 타임스탬프를 초 단위(UNIX)로 변환
-                            time: typeof d.time === 'string' ? Math.floor(new Date(d.time).getTime() / 1000) : d.time
-                        }))
-                        .filter(d => {
-                            if (!d.time || seenTimes.has(d.time)) return false;
-                            seenTimes.add(d.time);
-                            return true;
-                        })
-                        .sort((a, b) => a.time - b.time);
-
-                    series.setData(processed);
-                    chart.timeScale().fitContent();
+                const finalData = [];
+                const seen = new Set();
+                for (const d of sortedData) {
+                    let timeVal = d.time;
+                    if (["1d", "1wk", "1mo", "1y"].includes(interval) && typeof timeVal === 'string') {
+                        timeVal = timeVal.split(' ')[0];
+                    } else if (typeof timeVal === 'string') {
+                        const ts = Math.floor(new Date(timeVal).getTime() / 1000);
+                        if (!isNaN(ts)) timeVal = ts;
+                    }
+                    if (!seen.has(timeVal)) {
+                        finalData.push({ ...d, time: timeVal });
+                        seen.add(timeVal);
+                    }
                 }
 
-                chartRef.current = chart;
-                seriesRef.current = series;
+                if (finalData.length === 0) return;
 
+                // 2. Init Chart
+                const chart = createChart(chartContainerRef.current, {
+                    layout: {
+                        background: { type: ColorType.Solid, color: 'transparent' },
+                        textColor: '#94a3b8',
+                        fontSize: 11,
+                        fontFamily: 'Outfit, sans-serif',
+                    },
+                    grid: {
+                        vertLines: { color: showGrid ? 'rgba(30, 41, 59, 0.2)' : 'transparent' },
+                        horzLines: { color: showGrid ? 'rgba(30, 41, 59, 0.2)' : 'transparent' },
+                    },
+                    width: chartContainerRef.current.clientWidth,
+                    height: chartContainerRef.current.clientHeight,
+                    timeScale: {
+                        borderColor: 'rgba(51, 65, 85, 0.4)',
+                        timeVisible: !["1d", "1wk", "1mo", "1y"].includes(interval),
+                        fixLeftEdge: true,
+                        barSpacing: 10,
+                    },
+                    rightPriceScale: {
+                        borderColor: 'rgba(51, 65, 85, 0.4)',
+                        scaleMargins: { top: 0.1, bottom: showRSI || showMACD ? 0.35 : 0.2 },
+                    }
+                });
+
+                // 3. Main Series
+                const mainSeries = chart.addSeries(CandlestickSeries, {
+                    upColor, downColor, borderVisible: false, wickUpColor: upColor, wickDownColor: downColor,
+                });
+                mainSeries.setData(finalData);
+
+                // --- AI SMART DRAWING CORE (NEW) ---
+                if (showAIQuotes && analysis) {
+                    // (1) Entry/Target/Stop Price Lines
+                    if (analysis.entry_points) {
+                        const { buy, target, stop } = analysis.entry_points;
+                        if (buy) mainSeries.createPriceLine({ price: parseFloat(buy), color: '#fb7185', lineWidth: 2, title: 'AI ENTRY' });
+                        if (target) mainSeries.createPriceLine({ price: parseFloat(target), color: '#22d3ee', lineWidth: 2, lineStyle: 2, title: 'AI TARGET' });
+                        if (stop) mainSeries.createPriceLine({ price: parseFloat(stop), color: '#60a5fa', lineWidth: 2, lineStyle: 1, title: 'AI STOP' });
+                    }
+
+                    // (2) Geometric Patterns (Trendlines, ABC, Triangles)
+                    // analysis.daily_analysis.patterns 또는 analysis.patterns 형태 대응
+                    const patterns = analysis.patterns || (analysis.daily_analysis && analysis.daily_analysis.patterns) || [];
+
+                    patterns.forEach((pattern, pIdx) => {
+                        if (pattern.points && pattern.points.length >= 2) {
+                            const patternSeries = chart.addSeries(LineSeries, {
+                                color: pattern.type === 'bullish_reversal' ? '#facc15' :
+                                    pattern.type === 'trend_line' ? '#10b981' :
+                                        pattern.type === 'resistance_line' ? '#f43f5e' : '#94a3b8',
+                                lineWidth: 2,
+                                lineStyle: pattern.type.includes('line') ? 0 : 2,
+                                title: pattern.name,
+                                lastValueVisible: false,
+                                priceLineVisible: false,
+                            });
+
+                            // 포인트 시간 전처리 (차트 시간 형식에 맞게)
+                            const patternPoints = pattern.points.map(p => {
+                                let t = p.time;
+                                if (["1d", "1wk", "1mo", "1y"].includes(interval) && typeof t === 'string') {
+                                    t = t.split(' ')[0];
+                                } else if (typeof t === 'string') {
+                                    const ts = Math.floor(new Date(t).getTime() / 1000);
+                                    if (!isNaN(ts)) t = ts;
+                                }
+                                return { time: t, value: p.price };
+                            }).filter(p => p.time);
+
+                            patternSeries.setData(patternPoints);
+
+                            // 패턴 시작점에 마커 추가
+                            if (patternPoints.length > 0) {
+                                mainSeries.setMarkers([
+                                    ...(mainSeries.markers() || []),
+                                    {
+                                        time: patternPoints[0].time,
+                                        position: 'aboveBar',
+                                        color: '#facc15',
+                                        shape: 'arrowDown',
+                                        text: pattern.name,
+                                    }
+                                ]);
+                            }
+                        }
+                    });
+                }
+                // ------------------------------------
+
+                // 4. SMA Overlays
+                if (showSMA) {
+                    const sma20 = chart.addSeries(LineSeries, { color: '#fbbf24', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+                    sma20.setData(finalData.filter(d => d.sma20).map(d => ({ time: d.time, value: d.sma20 })));
+                }
+
+                // 5. Volume
+                if (showVolume) {
+                    const volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' });
+                    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+                    volumeSeries.setData(finalData.map(d => ({
+                        time: d.time, value: d.volume, color: d.close >= d.open ? upColor + '22' : downColor + '22'
+                    })));
+                }
+
+                requestAnimationFrame(() => {
+                    chart.timeScale().fitContent();
+                    if (finalData.length > 60) {
+                        chart.timeScale().setVisibleLogicalRange({ from: finalData.length - 60, to: finalData.length - 1 });
+                    }
+                });
+
+                chartRef.current = chart;
             } catch (err) {
-                console.error("[CHART_CORE_ERROR]", err);
+                console.error("[CHART_BUILD_ERROR]", err);
                 setLocalError(err.message);
             }
         };
 
-        // DOM 렌더링을 기다리기 위해 아주 짧은 지연시간 부여
-        const timer = setTimeout(buildChart, 50);
-
-        const handleResize = () => {
-            if (chartRef.current && chartContainerRef.current) {
-                chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
-            }
-        };
+        const timer = setTimeout(buildChart, 100);
+        const handleResize = () => { if (chartRef.current && chartContainerRef.current) chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth, height: chartContainerRef.current.clientHeight }); };
         window.addEventListener('resize', handleResize);
+        return () => { clearTimeout(timer); window.removeEventListener('resize', handleResize); if (chartRef.current) chartRef.current.remove(); };
+    }, [data, interval, options, analysis]);
 
-        return () => {
-            clearTimeout(timer);
-            window.removeEventListener('resize', handleResize);
-            if (chartRef.current) {
-                try { chartRef.current.remove(); } catch (e) { }
-            }
-        };
-    }, [data]);
-
-    if (localError) {
-        return (
-            <div style={{ padding: '30px', textAlign: 'center', color: '#f87171', border: '1px solid #451a1a', borderRadius: '12px', background: '#0f172a' }}>
-                <p style={{ fontWeight: 'bold' }}>Chart Engine Compatibility Error</p>
-                <code style={{ fontSize: '11px', display: 'block', marginTop: '10px', color: '#94a3b8' }}>{localError}</code>
-            </div>
-        );
-    }
-
-    return (
-        <div
-            ref={chartContainerRef}
-            style={{ width: '100%', height: '400px', backgroundColor: '#0f172a' }}
-        />
-    );
+    if (localError) return <div className="h-full flex items-center justify-center text-rose-400 text-xs font-black uppercase text-center p-4">{localError}</div>;
+    return <div ref={chartContainerRef} className="w-full h-full relative" />;
 };

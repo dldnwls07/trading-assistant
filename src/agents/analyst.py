@@ -48,88 +48,88 @@ class TechnicalAnalyzer:
 
     def detect_patterns(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """
-        주요 차트 패턴 감지 (보내주신 이미지 기준 고도화)
+        주요 차트 패턴 감지 및 시각화용 좌표 리턴
         """
         patterns = []
         if len(df) < 60:
             return patterns
             
-        close = df['Close'].values
-        low = df['Low'].values
-        high = df['High'].values
-        
-        # --- 1. 바닥 패턴: 쌍바닥 (Double Bottom) ---
-        window = 60  # 60일로 범위 확대
+        window = 60
         section = df.tail(window)
-        # 구간을 절반으로 나누어 각각의 최저점 탐색
+        
+        # 날짜 포맷팅 함수 (ISO 스트링 또는 인덱스)
+        def get_time(idx): return str(df.loc[idx, 'Date']) if 'Date' in df.columns else str(idx)
+
+        # --- 1. 쌍바닥 (Double Bottom) + 드로잉 좌표 ---
         l_min1_idx = section.iloc[:window//2]['Low'].idxmin()
         l_min2_idx = section.iloc[window//2:]['Low'].idxmin()
         val1, val2 = df.loc[l_min1_idx, 'Low'], df.loc[l_min2_idx, 'Low']
         
-        if abs(val1 - val2) / val1 < 0.02:
-            mid_h = df.loc[l_min1_idx:l_min2_idx, 'High'].max()
+        if abs(val1 - val2) / val1 < 0.025:
+            mid_h_idx = df.loc[l_min1_idx:l_min2_idx, 'High'].idxmax()
+            mid_h = df.loc[mid_h_idx, 'High']
             if mid_h > max(val1, val2) * 1.03:
                 patterns.append({
                     "name": "쌍바닥 (W패턴)",
                     "type": "bullish_reversal",
-                    "desc": "가격이 두 번 바닥을 다지고 반등했습니다. 강력한 매수 신호입니다."
+                    "points": [
+                        {"time": get_time(l_min1_idx), "price": float(val1)},
+                        {"time": get_time(mid_h_idx), "price": float(mid_h)},
+                        {"time": get_time(l_min2_idx), "price": float(val2)}
+                    ],
+                    "desc": "강력한 바닥 지지 신호입니다. W의 중앙 고점 돌파 시 추세 전환이 확정됩니다."
                 })
 
-        # --- 2. 천장 패턴: 쌍봉 (Double Top) ---
-        l_max1_idx = section.iloc[:window//2]['High'].idxmax()
-        l_max2_idx = section.iloc[window//2:]['High'].idxmax()
-        h_val1, h_val2 = df.loc[l_max1_idx, 'High'], df.loc[l_max2_idx, 'High']
+        # --- 2. 헤드 앤 숄더 (Head & Shoulders) + 드로잉 좌표 ---
+        p1 = section.iloc[0:20]['High'].idxmax()
+        p2 = section.iloc[20:40]['High'].idxmax()
+        p3 = section.iloc[40:60]['High'].idxmax()
+        v1, v2, v3 = df.loc[p1, 'High'], df.loc[p2, 'High'], df.loc[p3, 'High']
         
-        if abs(h_val1 - h_val2) / h_val1 < 0.02:
-            mid_l = df.loc[l_max1_idx:l_max2_idx, 'Low'].min()
-            if mid_l < min(h_val1, h_val2) * 0.97:
-                patterns.append({
-                    "name": "쌍봉 (M패턴)",
-                    "type": "bearish_reversal",
-                    "desc": "고점에서 두 번 저항을 받았습니다. 하락 반전 가능성이 높습니다."
-                })
-
-        # --- 3. 수렴 패턴: 상승 삼각형 (Ascending Triangle) ---
-        recent = df.tail(20)
-        h_std = np.std(recent['High']) / np.mean(recent['High'])
-        low_trend = recent['Low'].iloc[-1] > recent['Low'].iloc[0]
-        if h_std < 0.015 and low_trend:
+        if v2 > v1 * 1.03 and v2 > v3 * 1.03 and abs(v1-v3)/v1 < 0.05:
             patterns.append({
-                "name": "상승 삼각형",
-                "type": "bullish_continuation",
-                "desc": "고항선은 유지되나 저점이 높아집니다. 상향 돌파가 임박했습니다."
+                "name": "헤드 앤 숄더",
+                "type": "bearish_reversal",
+                "points": [
+                    {"time": get_time(p1), "price": float(v1)},
+                    {"time": get_time(p2), "price": float(v2)},
+                    {"time": get_time(p3), "price": float(v3)}
+                ],
+                "desc": "전형적인 천장 신호입니다. 세 번째 산인 오른쪽 어깨 이후 하락세가 강화될 수 있습니다."
             })
 
-        # --- 4. 반전 패턴: 헤드 앤 숄더 (Head & Shoulders) ---
-        # 60일 내에서 왼쪽 어깨, 머리, 오른쪽 어깨 감지
-        if len(df) >= 60:
-            s60 = df.tail(60)
-            p1 = s60.iloc[0:20]['High'].idxmax()
-            p2 = s60.iloc[20:40]['High'].idxmax()
-            p3 = s60.iloc[40:60]['High'].idxmax()
-            v1, v2, v3 = df.loc[p1, 'High'], df.loc[p2, 'High'], df.loc[p3, 'High']
-            
-            if v2 > v1 * 1.03 and v2 > v3 * 1.03 and abs(v1-v3)/v1 < 0.04:
+        # --- 3. 추세선 (Trend Lines) - 지지 및 저항 추세 ---
+        # 지지 추세선: 최근 두 개의 저점 연결
+        recent_lows = section.sort_values('Low').head(5).index.sort_values()
+        if len(recent_lows) >= 2:
+            idx1, idx2 = recent_lows[0], recent_lows[-1]
+            if (idx2 - idx1) > 10: # 너무 붙어있지 않은 두 지점
                 patterns.append({
-                    "name": "헤드 앤 숄더",
-                    "type": "bearish_reversal",
-                    "desc": "전형적인 고점 신호입니다. 어깨 라인 이탈 시 급락 위험이 있습니다."
+                    "name": "상승/지지 추세선",
+                    "type": "trend_line",
+                    "points": [
+                        {"time": get_time(idx1), "price": float(df.loc[idx1, 'Low'])},
+                        {"time": get_time(idx2), "price": float(df.loc[idx2, 'Low'])}
+                    ],
+                    "desc": "가격의 하단을 지지해주는 핵심 추세 추종 라인입니다."
                 })
-        
-        # --- 5. 상승 패턴: 상승 플래그 (Bullish Flag) ---
-        # 급등(폴) 후 완만한 하락(플래그)
-        pole_start = df.iloc[-15:-5]
-        pole_height = pole_start['Close'].max() - pole_start['Close'].min()
-        flag_section = df.tail(5)
-        flag_drop = flag_section['High'].max() - flag_section['Low'].min()
-        
-        if pole_height > (df.iloc[-15]['Close'] * 0.05) and flag_drop < (pole_height * 0.5):
-            if flag_section['Close'].iloc[-1] > flag_section['Close'].iloc[0]:
+
+        # 저항 추세선: 최근 두 개의 고점 연결
+        recent_highs = section.sort_values('High', ascending=False).head(5).index.sort_values()
+        if len(recent_highs) >= 2:
+            idx1, idx2 = recent_highs[0], recent_highs[-1]
+            if (idx2 - idx1) > 10:
                 patterns.append({
-                    "name": "상승 플래그",
-                    "type": "bullish_continuation",
-                    "desc": "강한 상승 후 잠시 쉬어가는 구간입니다. 재차 급등 가능성이 높습니다."
+                    "name": "하락/저항 추세선",
+                    "type": "resistance_line",
+                    "points": [
+                        {"time": get_time(idx1), "price": float(df.loc[idx1, 'High'])},
+                        {"time": get_time(idx2), "price": float(df.loc[idx2, 'High'])}
+                    ],
+                    "desc": "가격을 누르고 있는 저항 구간으로, 돌파 시 급등 가능성이 있습니다."
                 })
+
+        return patterns
 
         return patterns
 
