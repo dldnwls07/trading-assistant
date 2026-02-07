@@ -22,36 +22,41 @@ class MarketDataCollector:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.db = DataStorage() if use_db else None
         
-    def get_daily_ohlcv(self, ticker: str, period: str = "1y") -> Optional[pd.DataFrame]:
+    def get_ohlcv(self, ticker: str, period: str = "1y", interval: str = "1d") -> Optional[pd.DataFrame]:
         """
-        Fetches daily OHLCV data for a given ticker.
+        Fetches OHLCV data for a given ticker with a specific interval.
         
         Args:
             ticker: Stock symbol (e.g., 'AAPL')
-            period: Data period (e.g., '1y', 'max')
+            period: Data period (e.g., '1y', 'max', '5d')
+            interval: Data interval (e.g., '1m', '5m', '1h', '1d', '1wk')
             
         Returns:
             DataFrame with OHLCV data or None if failed.
         """
         try:
-            logger.info(f"Fetching daily data for {ticker}...")
+            logger.info(f"Fetching {interval} data for {ticker} (Period: {period})...")
             stock = yf.Ticker(ticker)
-            df = stock.history(period=period)
+            df = stock.history(period=period, interval=interval)
             
             if df.empty:
-                logger.warning(f"No data found for {ticker}")
+                logger.warning(f"No data found for {ticker} with interval {interval}")
                 return None
                 
             # Clean data
             df.reset_index(inplace=True)
-            df['Date'] = pd.to_datetime(df['Date']).dt.date
+            if interval in ["1d", "1wk", "1mo"]:
+                df['Date'] = pd.to_datetime(df['Date']).dt.date
+            else:
+                # 분/시간 데이터는 시간 정보가 중요함
+                df['Date'] = pd.to_datetime(df['Date'])
             
             # Save to CSV for cache/inspection
-            save_path = self.data_dir / f"{ticker}.csv"
+            save_path = self.data_dir / f"{ticker}_{interval}.csv"
             df.to_csv(save_path, index=False)
             
-            # Save to DB
-            if self.db:
+            # Save to DB (Intraday 데이터는 DB 스키마 확장이 필요할 수 있으나 일단 저장 시도)
+            if self.db and interval in ["1d", "1wk"]:
                 self.db.save_price_history(ticker, df)
                 
             return df

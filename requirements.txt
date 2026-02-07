@@ -1,5 +1,11 @@
 yfinance
 pandas
+numpy
 sqlalchemy
 requests
 pyperclip
+huggingface_hub
+matplotlib
+mplfinance
+python-dotenv
+Pillow

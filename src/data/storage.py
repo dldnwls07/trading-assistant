@@ -1,11 +1,29 @@
+"""
+데이터 저장소 모듈
+- SQLite 데이터베이스 관리
+- 싱글톤 패턴으로 중복 인스턴스 방지
+- Context Manager로 세션 안전 관리
+"""
+import os
+import logging
+from contextlib import contextmanager
+from typing import Optional, List
+
 from sqlalchemy import create_engine, Column, Integer, String, Float, Date, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
-from pathlib import Path
-import logging
+from sqlalchemy.orm import sessionmaker, relationship, Session
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 Base = declarative_base()
+
+
+# ===========================================
+# 모델 정의
+# ===========================================
 
 class Stock(Base):
     __tablename__ = 'stocks'
@@ -15,8 +33,9 @@ class Stock(Base):
     sector = Column(String)
     industry = Column(String)
     
-    prices = relationship("PriceHistory", back_populates="stock")
-    financials = relationship("Financials", back_populates="stock")
+    prices = relationship("PriceHistory", back_populates="stock", cascade="all, delete-orphan")
+    financials = relationship("Financials", back_populates="stock", cascade="all, delete-orphan")
+
 
 class PriceHistory(Base):
     __tablename__ = 'price_history'
@@ -32,12 +51,13 @@ class PriceHistory(Base):
     
     stock = relationship("Stock", back_populates="prices")
 
+
 class Financials(Base):
     __tablename__ = 'financials'
     
     id = Column(Integer, primary_key=True)
     ticker = Column(String, ForeignKey('stocks.ticker'))
-    period = Column(String) # '2023-Q4', '2023-FY'
+    period = Column(String)  # '2023-Q4', '2023-FY'
     report_date = Column(Date)
     
     revenue = Column(Float)
@@ -48,47 +68,83 @@ class Financials(Base):
     
     stock = relationship("Stock", back_populates="financials")
 
+
+# ===========================================
+# 싱글톤 DataStorage
+# ===========================================
+
 class DataStorage:
-    def __init__(self, db_path: str = "trading_assistant.db"):
-        self.engine = create_engine(f'sqlite:///{db_path}')
+    """
+    싱글톤 패턴 데이터 저장소
+    - 하나의 인스턴스만 생성
+    - Context manager로 세션 관리
+    """
+    _instance: Optional['DataStorage'] = None
+    _initialized: bool = False
+    
+    def __new__(cls, db_path: Optional[str] = None):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self, db_path: Optional[str] = None):
+        # 이미 초기화된 경우 스킵
+        if DataStorage._initialized:
+            return
+        
+        # 환경변수 또는 매개변수에서 DB 경로 가져오기
+        self.db_path = db_path or os.getenv("DB_PATH", "trading_assistant.db")
+        self.engine = create_engine(f'sqlite:///{self.db_path}', echo=False)
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
-        logger.info(f"Database initialized at {db_path}")
-
-    def get_session(self):
-        return self.Session()
+        
+        DataStorage._initialized = True
+        logger.info(f"Database initialized at {self.db_path}")
     
-    def save_stock(self, ticker, name=None, sector=None, industry=None):
+    @contextmanager
+    def get_session(self):
+        """
+        Context manager로 세션 관리
+        사용법: with storage.get_session() as session:
+        """
         session = self.Session()
         try:
+            yield session
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Session error: {e}")
+            raise
+        finally:
+            session.close()
+    
+    def save_stock(self, ticker: str, name: str = None, 
+                   sector: str = None, industry: str = None) -> Optional[Stock]:
+        """종목 정보 저장/업데이트"""
+        with self.get_session() as session:
             stock = session.query(Stock).filter_by(ticker=ticker).first()
             if not stock:
                 stock = Stock(ticker=ticker, name=name, sector=sector, industry=industry)
                 session.add(stock)
             else:
-                if name: stock.name = name
-                if sector: stock.sector = sector
-                if industry: stock.industry = industry
-            session.commit()
+                if name:
+                    stock.name = name
+                if sector:
+                    stock.sector = sector
+                if industry:
+                    stock.industry = industry
             return stock
-        except Exception as e:
-            logger.error(f"Error saving stock {ticker}: {e}")
-            session.rollback()
-            return None
-        finally:
-            session.close()
-
-    def save_price_history(self, ticker: str, df):
+    
+    def save_price_history(self, ticker: str, df) -> int:
         """
-        Saves OHLCV data from a DataFrame to the database.
-        Expects DataFrame to have columns: Date, Open, High, Low, Close, Volume
+        OHLCV 데이터 저장
+        Returns: 저장된 레코드 수
         """
-        session = self.Session()
-        try:
-            # Ensure stock exists first
-            self.save_stock(ticker)
-            
-            # Get existing dates to avoid duplicates (simple optimization)
+        # 먼저 종목 확인
+        self.save_stock(ticker)
+        
+        with self.get_session() as session:
+            # 기존 날짜 조회 (중복 방지)
             existing_dates = {
                 row[0] for row in session.query(PriceHistory.date)
                 .filter(PriceHistory.ticker == ticker)
@@ -97,10 +153,10 @@ class DataStorage:
             
             new_records = []
             for _, row in df.iterrows():
-                date_val = row['Date'] # Already date object from collector
+                date_val = row['Date']
                 if date_val in existing_dates:
                     continue
-                    
+                
                 record = PriceHistory(
                     ticker=ticker,
                     date=date_val,
@@ -114,43 +170,38 @@ class DataStorage:
             
             if new_records:
                 session.bulk_save_objects(new_records)
-                session.commit()
                 logger.info(f"Saved {len(new_records)} new price records for {ticker}")
             else:
                 logger.info(f"No new records to save for {ticker}")
-                
-        except Exception as e:
-            logger.error(f"Error saving price history for {ticker}: {e}")
-            session.rollback()
-        finally:
-            session.close()
-
-    def save_financials(self, ticker: str, financials_data: list[dict]):
-        """
-        Saves list of financial records.
-        Each dict should contain keys matching Financials model:
-        period, report_date, revenue, net_income, eps, total_assets, total_liabilities
-        """
-        session = self.Session()
-        try:
-            self.save_stock(ticker)
             
+            return len(new_records)
+    
+    def save_financials(self, ticker: str, financials_data: List[dict]) -> int:
+        """
+        재무 데이터 저장
+        Returns: 저장된 레코드 수
+        """
+        self.save_stock(ticker)
+        saved_count = 0
+        
+        with self.get_session() as session:
             for rec in financials_data:
-                # Check if record exists for this period
+                # 기존 레코드 확인
                 existing = session.query(Financials).filter_by(
-                    ticker=ticker, 
+                    ticker=ticker,
                     period=rec['period'],
                     report_date=rec['report_date']
                 ).first()
                 
                 if existing:
-                    # Update fields
+                    # 업데이트
                     existing.revenue = rec.get('revenue')
                     existing.net_income = rec.get('net_income')
                     existing.eps = rec.get('eps')
                     existing.total_assets = rec.get('total_assets')
                     existing.total_liabilities = rec.get('total_liabilities')
                 else:
+                    # 신규 추가
                     new_rec = Financials(
                         ticker=ticker,
                         period=rec['period'],
@@ -162,25 +213,48 @@ class DataStorage:
                         total_liabilities=rec.get('total_liabilities')
                     )
                     session.add(new_rec)
+                    saved_count += 1
             
-            session.commit()
-            logger.info(f"Saved {len(financials_data)} financial records for {ticker}")
-            
-        except Exception as e:
-            logger.error(f"Error saving financials for {ticker}: {e}")
-            session.rollback()
-        finally:
-            session.close()
+            logger.info(f"Saved {saved_count} financial records for {ticker}")
+            return saved_count
+    
+    def get_financials(self, ticker: str) -> List[Financials]:
+        """재무 데이터 조회"""
+        with self.get_session() as session:
+            # 세션 닫히기 전에 데이터 복사 (expunge 사용)
+            records = session.query(Financials).filter_by(ticker=ticker).all()
+            for r in records:
+                session.expunge(r)
+            return records
+    
+    def get_price_history(self, ticker: str, limit: int = 365) -> List[PriceHistory]:
+        """가격 히스토리 조회"""
+        with self.get_session() as session:
+            records = (
+                session.query(PriceHistory)
+                .filter_by(ticker=ticker)
+                .order_by(PriceHistory.date.desc())
+                .limit(limit)
+                .all()
+            )
+            for r in records:
+                session.expunge(r)
+            return records
+    
+    @classmethod
+    def reset_instance(cls):
+        """테스트용: 싱글톤 인스턴스 리셋"""
+        cls._instance = None
+        cls._initialized = False
 
-    def get_financials(self, ticker: str):
-        """
-        Retrieves financial records for a ticker.
-        """
-        session = self.Session()
-        try:
-            return session.query(Financials).filter_by(ticker=ticker).all()
-        finally:
-            session.close()
+
+# 편의를 위한 전역 함수
+def get_storage(db_path: str = None) -> DataStorage:
+    """DataStorage 싱글톤 인스턴스 반환"""
+    return DataStorage(db_path)
+
 
 if __name__ == "__main__":
-    storage = DataStorage()
+    logging.basicConfig(level=logging.INFO)
+    storage = get_storage()
+    print(f"Database path: {storage.db_path}")
