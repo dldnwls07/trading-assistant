@@ -154,6 +154,16 @@ class DataStorage:
             new_records = []
             for _, row in df.iterrows():
                 date_val = row['Date']
+                
+                # [강력 조치] 문자열 날짜를 Date 객체로 강제 변환
+                if isinstance(date_val, str):
+                    try:
+                        from datetime import datetime
+                        date_val = datetime.strptime(date_val.split(' ')[0], '%Y-%m-%d').date()
+                    except Exception as e:
+                        logger.warning(f"Date conversion failed for {date_val}: {e}")
+                        continue
+                
                 if date_val in existing_dates:
                     continue
                 

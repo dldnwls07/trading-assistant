@@ -1,12 +1,11 @@
 import yfinance as yf
 import pandas as pd
 import logging
+import time as time_module # 변수 이름 충돌 방지
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict
 from .storage import DataStorage
-
-# Setup logger
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -45,7 +44,7 @@ class MarketDataCollector:
                 # [방어코드] yfinance 반환값 검증
                 if df is None or not isinstance(df, pd.DataFrame) or df.empty:
                     if attempt < retries - 1:
-                        time.sleep(1)
+                        time_module.sleep(1) # 모듈 이름을 명확히 함
                         continue
                     logger.warning(f"No data found for {ticker} with interval {interval}")
                     return None
@@ -57,46 +56,27 @@ class MarketDataCollector:
                 # 날짜 타입 변환
                 if 'Date' in df.columns:
                     try:
+                        df['Date'] = pd.to_datetime(df['Date'])
                         if interval in ["1d", "1wk", "1mo"]:
-                            df['Date'] = pd.to_datetime(df['Date']).dt.date
+                            df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
                         else:
-                            df['Date'] = pd.to_datetime(df['Date'])
+                            df['Date'] = df['Date'].dt.strftime('%Y-%m-%d %H:%M')
                     except Exception as e:
-                        logger.warning(f"Date conversion failed: {e}")
-
-                # Save to CSV
-                save_path = self.data_dir / f"{ticker}_{interval}.csv"
-                df.to_csv(save_path, index=False)
+                        logger.warning(f"Date formatting error: {e}")
                 
-                # DB 저장 (에러 무시)
-                try:
-                    if self.db and interval in ["1d"]:
+                # DB 저장 (비동기로 진행하는 것이 좋으나 여기선 단순화)
+                if self.db:
+                    try:
                         self.db.save_price_history(ticker, df)
-                except:
-                    pass
-                    
+                    except Exception as e:
+                        logger.error(f"DB save error for {ticker}: {e}")
+                
                 return df
                 
             except Exception as e:
                 logger.error(f"Error on attempt {attempt+1}: {e}")
                 if attempt < retries - 1:
-                    import time
-                    time.sleep(1)
+                    time_module.sleep(1)
                 else:
                     return None
         return None
-
-    def get_market_status(self) -> str:
-        """
-        Checks if the US market is open (simplified).
-        """
-        # TODO: Implement robust market status check using exchange calendars
-        return "Unknown"
-
-if __name__ == "__main__":
-    # Test execution
-    logging.basicConfig(level=logging.INFO)
-    collector = MarketDataCollector()
-    data = collector.get_daily_ohlcv("AAPL")
-    if data is not None:
-        print(data.head())
