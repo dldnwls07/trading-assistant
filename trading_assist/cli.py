@@ -1,14 +1,12 @@
-from pathlib import Path
-
 import click
 import pandas as pd
 
-from . import data_source
+from . import analysis, config, data_source, visualization
 from .ai_analysis import generate_analysis_prompt
 from .validation import validate_ohlcv
 
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(exist_ok=True)
+# Ensure all necessary directories exist on startup
+config.init_dirs()
 
 
 @click.group()
@@ -52,7 +50,7 @@ def fetch(ticker, period, interval):
         raise click.Abort()
 
     try:
-        filepath = DATA_DIR / f"{ticker.upper()}.csv"
+        filepath = config.DATA_DIR / f"{ticker.upper()}.csv"
         df.to_csv(filepath)
         click.echo(f"Saved to {filepath}")
     except Exception as e:
@@ -64,7 +62,7 @@ def fetch(ticker, period, interval):
 @click.argument("ticker")
 def summary(ticker):
     """Show a brief summary for TICKER (last close, volume)"""
-    filepath = DATA_DIR / f"{ticker.upper()}.csv"
+    filepath = config.DATA_DIR / f"{ticker.upper()}.csv"
     if not filepath.exists():
         msg = f"Data for {ticker} not found. Run `fetch` first."
         click.echo(msg)
@@ -99,41 +97,35 @@ def financials(ticker):
 @click.argument("ticker")
 def analyze(ticker):
     """Analyze Moving Average Golden Cross (MA50 vs MA200)"""
-    filepath = DATA_DIR / f"{ticker.upper()}.csv"
+    filepath = config.DATA_DIR / f"{ticker.upper()}.csv"
     if not filepath.exists():
         click.echo(f"Data for {ticker} not found. Run 'fetch {ticker}' first.")
         raise click.Abort()
 
     df = pd.read_csv(filepath, index_col=0, parse_dates=True)
+    
+    # Use the centralized analysis function
+    result = analysis.calculate_golden_cross(df)
 
-    if len(df) < 200:
-        click.echo(f"Not enough data for MA200 analysis (Rows: {len(df)})")
+    if "error" in result:
+        click.echo(result["error"])
         raise click.Abort()
 
-    df["MA50"] = df["Close"].rolling(window=50).mean()
-    df["MA200"] = df["Close"].rolling(window=200).mean()
-
-    last_ma50 = df["MA50"].iloc[-1]
-    last_ma200 = df["MA200"].iloc[-1]
-
-    signal = (
-        "GOLDEN CROSS (Bullish) 📈"
-        if last_ma50 > last_ma200
-        else "DEATH CROSS (Bearish) 📉"
-    )
     click.echo(
-        f"[{ticker.upper()}] {signal}\nMA50: {last_ma50:.2f} | MA200: {last_ma200:.2f}"
+        f"[{ticker.upper()}] {result['signal']}\n"
+        f"MA{result['short_window']}: {result[f'ma_{result['short_window']}']:.2f} | "
+        f"MA{result['long_window']}: {result[f'ma_{result['long_window']}']:.2f}"
     )
 
 
 @main.command()
 def screen():
     """Screen for Golden Cross (MA50 > MA200) across all saved data."""
-    if not DATA_DIR.exists():
+    if not config.DATA_DIR.exists():
         click.echo("No data directory found. Run 'fetch' first.")
         raise click.Abort()
 
-    csv_files = list(DATA_DIR.glob("*.csv"))
+    csv_files = list(config.DATA_DIR.glob("*.csv"))
     if not csv_files:
         click.echo("No data files found. Run 'fetch <ticker>' first.")
         raise click.Abort()
@@ -144,24 +136,18 @@ def screen():
     for filepath in csv_files:
         try:
             df = pd.read_csv(filepath, index_col=0, parse_dates=True)
-            if len(df) < 200:
-                continue
+            result = analysis.calculate_golden_cross(df)
+            
+            if "error" not in result and result["signal"] == "Golden Cross (Bullish)":
+                found.append((filepath.stem, result[f"ma_{result['short_window']}"], result[f"ma_{result['long_window']}"]))
 
-            df["MA50"] = df["Close"].rolling(window=50).mean()
-            df["MA200"] = df["Close"].rolling(window=200).mean()
-
-            last_ma50 = df["MA50"].iloc[-1]
-            last_ma200 = df["MA200"].iloc[-1]
-
-            if last_ma50 > last_ma200:
-                found.append((filepath.stem, last_ma50, last_ma200))
         except Exception:
             continue
 
     if found:
         click.echo(f"\nFound {len(found)} stocks with Golden Cross (Bullish) 🚀:")
-        for ticker, ma50, ma200 in found:
-            click.echo(f"- {ticker}: MA50({ma50:.2f}) > MA200({ma200:.2f})")
+        for ticker, ma_short, ma_long in found:
+            click.echo(f"- {ticker}: MA{config.DEFAULT_MA_SHORT_WINDOW}({ma_short:.2f}) > MA{config.DEFAULT_MA_LONG_WINDOW}({ma_long:.2f})")
     else:
         click.echo("\nNo stocks found matching the criteria.")
 
@@ -170,7 +156,7 @@ def screen():
 @click.argument("ticker")
 def ai_prompt(ticker):
     """Generate a prompt for AI analysis (Copy & Paste to ChatGPT/Claude)."""
-    filepath = DATA_DIR / f"{ticker.upper()}.csv"
+    filepath = config.DATA_DIR / f"{ticker.upper()}.csv"
     if not filepath.exists():
         click.echo(f"Data for {ticker} not found. Run 'fetch {ticker}' first.")
         raise click.Abort()
@@ -183,6 +169,36 @@ def ai_prompt(ticker):
     click.echo(prompt)
     click.echo("-" * 40)
     click.echo("\nTip: Copy the text above and paste it into ChatGPT or Claude!")
+
+
+@main.command()
+@click.argument("ticker")
+def chart(ticker):
+    """Generate and save a technical chart for TICKER."""
+    filepath = config.DATA_DIR / f"{ticker.upper()}.csv"
+    if not filepath.exists():
+        click.echo(f"Data for {ticker} not found. Run 'fetch {ticker}' first.")
+        raise click.Abort()
+
+    df = pd.read_csv(filepath, index_col=0, parse_dates=True)
+
+    if len(df) < 20:  # Need at least 20 days for MA20/BBands
+        click.echo(f"Not enough data to generate a meaningful chart (Rows: {len(df)})")
+        raise click.Abort()
+
+    chart_path = config.CHART_DIR / f"{ticker.upper()}.png"
+    click.echo(f"Generating chart for {ticker.upper()}...")
+
+    try:
+        visualization.create_and_save_chart(df, ticker, chart_path)
+        click.echo(f"✅ Chart saved to {chart_path}")
+    except ImportError as e:
+        click.echo(f"Error: {e}", err=True)
+        click.echo("Hint: Please install the charting library with 'pip install mplfinance'", err=True)
+        raise click.Abort()
+    except Exception as e:
+        click.echo(f"❌ Error generating chart: {e}", err=True)
+        raise click.Abort()
 
 
 @main.command()

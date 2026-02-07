@@ -1,5 +1,0 @@
-click
-pandas
-yfinance
-tradingeconomics
-pytest
