@@ -220,14 +220,18 @@ async def get_history(ticker: str, interval: str = "1d"):
         calc_df = calc_df.join(bb_df)
 
         history = []
-        # JSON 직렬화를 위해 다시 정리
-        calc_df.reset_index(drop=True, inplace=True)
+        # JSON 직렬화를 위해 정렬 보장
+        calc_df.sort_index(inplace=True)
         
-        for _, row in calc_df.iterrows():
+        for idx, row in calc_df.iterrows():
+            # 인덱스가 날짜이므로 직접 변환
             try:
-                time_val = str(row['Date'])
+                if hasattr(idx, 'strftime'):
+                    time_val = idx.strftime('%Y-%m-%d %H:%M:%S' if interval != '1d' else '%Y-%m-%d')
+                else:
+                    time_val = str(idx)
             except:
-                time_val = "Unknown"
+                time_val = str(idx)
 
             history.append({
                 "time": time_val,
