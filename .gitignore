@@ -4,8 +4,11 @@ __pycache__/
 *.egg-info/
 *.pyc
 venv/
+.venv/
+.pytest_cache/
 .env
 .env.*
+!.env.example
 
 # Node
 node_modules/
@@ -20,8 +23,8 @@ build/
 # Data & DB
 *.db
 *.sqlite
-data/
-datasets/
+/data/
+/datasets/
 *.sqlite3
 
 # Logs
@@ -44,3 +47,9 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints
+
+# Project Specific
+/charts/
+/data/
+*.csv
+*.png

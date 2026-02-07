@@ -11,7 +11,26 @@ dependencies = [
   "click>=8.0",
   "yfinance",
   "pandas",
+  "tradingeconomics",
+  "finnhub-python",
+  "mplfinance",
+  "python-dotenv",
+  "fastapi",
+  "uvicorn[standard]",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
 ]
 
 [project.scripts]
 trading-assist = "trading_assist.cli:main"
+
+[tool.setuptools]
+packages = ["trading_assist"]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
