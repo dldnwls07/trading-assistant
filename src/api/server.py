@@ -5,6 +5,8 @@ from typing import Optional, Dict, List, Any
 import logging
 import pandas as pd
 import json
+import os
+from datetime import datetime
 
 # 프로젝트 모듈
 from src.data.collector import MarketDataCollector
@@ -12,15 +14,19 @@ from src.data.storage import get_storage
 from src.data.parser import FinancialParser
 from src.agents.analyst import StockAnalyst
 from src.agents.ai_analyzer import AIAnalyzer, get_stock_events
+from src.agents.chat_assistant import ChatAssistant
+from src.agents.event_calendar import EventCalendar
+from src.agents.portfolio_analyzer import PortfolioAnalyzer
+from src.agents.screener import StockScreener
 
 # 로깅
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Trading Assistant API",
-    description="Local Trading Analysis Server for Chrome Extension",
-    version="1.0.0"
+    title="Trading Assistant API v2.0",
+    description="AI-Powered Trading Analysis Server - Web, Mobile, Extension Ready",
+    version="2.0.0"
 )
 
 # CORS (크롬 확장 프로그램에서 접근 가능하도록 허용)
@@ -38,6 +44,12 @@ collector = MarketDataCollector(use_db=True)
 parser = FinancialParser(use_db=True)
 analyst = StockAnalyst()
 ai_analyzer = AIAnalyzer()
+
+# 신규 기능 인스턴스
+chat_assistant = ChatAssistant(gemini_api_key=os.getenv("GEMINI_API_KEY"))
+event_calendar = EventCalendar()
+portfolio_analyzer = PortfolioAnalyzer()
+screener = StockScreener()
 
 # === 모델 정의 ===
 class AnalysisRequest(BaseModel):
@@ -327,4 +339,198 @@ def safe_serialize(data):
     else:
         return data
 
-# 실행용: uvicorn src.api.server:app --reload
+# ============================================
+# 신규 API 엔드포인트 (v2.0)
+# ============================================
+
+# === AI 채팅 ===
+class ChatRequest(BaseModel):
+    message: str
+    ticker: Optional[str] = None
+    context: Optional[Dict[str, Any]] = None
+
+@app.post("/api/chat")
+async def chat(req: ChatRequest):
+    """
+    AI 채팅 (Gemini Flash)
+    """
+    try:
+        response = chat_assistant.chat(req.message, req.context)
+        return {
+            "message": req.message,
+            "response": response,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/chat/suggestions")
+async def chat_suggestions(ticker: Optional[str] = None):
+    """
+    추천 질문 생성
+    """
+    try:
+        context = {"ticker": ticker} if ticker else None
+        suggestions = chat_assistant.suggest_questions(context)
+        return {"suggestions": suggestions}
+    except Exception as e:
+        logger.error(f"Suggestions error: {e}")
+        return {"suggestions": []}
+
+@app.delete("/api/chat/history")
+async def clear_chat_history():
+    """
+    채팅 히스토리 초기화
+    """
+    try:
+        chat_assistant.clear_history()
+        return {"status": "ok", "message": "Chat history cleared"}
+    except Exception as e:
+        logger.error(f"Clear history error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === 경제 캘린더 ===
+@app.get("/api/calendar")
+async def get_calendar(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    tickers: Optional[str] = None
+):
+    """
+    경제 이벤트 캘린더
+    """
+    try:
+        from datetime import datetime, timedelta
+        
+        if not start_date:
+            start_date = datetime.now().strftime("%Y-%m-%d")
+        if not end_date:
+            end_date = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
+        
+        ticker_list = None
+        if tickers:
+            ticker_list = [t.strip().upper() for t in tickers.split(",")]
+        
+        calendar_data = event_calendar.get_calendar(
+            start_date=start_date,
+            end_date=end_date,
+            tickers=ticker_list
+        )
+        
+        return safe_serialize(calendar_data)
+    except Exception as e:
+        logger.error(f"Calendar error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === 포트폴리오 분석 ===
+class PortfolioRequest(BaseModel):
+    holdings: List[Dict[str, Any]]  # [{"ticker": "AAPL", "shares": 10, "avg_price": 150}]
+
+@app.post("/api/portfolio/analyze")
+async def analyze_portfolio(req: PortfolioRequest):
+    """
+    포트폴리오 AI 분석
+    """
+    try:
+        result = portfolio_analyzer.analyze_portfolio(req.holdings)
+        return safe_serialize(result)
+    except Exception as e:
+        logger.error(f"Portfolio analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === AI 추천 종목 ===
+@app.get("/api/screener/recommendations")
+async def get_recommendations(
+    style: Optional[str] = "balanced",
+    market: Optional[str] = "US",
+    limit: int = 10
+):
+    """
+    AI 추천 종목 스크리닝
+    """
+    try:
+        recommendations = screener.get_recommendations(
+            style=style,
+            market=market,
+            limit=limit
+        )
+        return safe_serialize(recommendations)
+    except Exception as e:
+        logger.error(f"Screener error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/screener/top-movers")
+async def get_top_movers(market: str = "US"):
+    """
+    급등/급락 종목
+    """
+    try:
+        movers = screener.get_top_movers(market=market)
+        return safe_serialize(movers)
+    except Exception as e:
+        logger.error(f"Top movers error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === 다중 시간 프레임 분석 ===
+@app.get("/api/multi-timeframe/{ticker}")
+async def multi_timeframe_analysis(ticker: str):
+    """
+    다중 시간 프레임 종합 분석
+    """
+    try:
+        final_ticker = get_final_ticker(ticker)
+        
+        # 여러 시간 프레임 데이터 수집
+        timeframes = {
+            "1h": collector.get_ohlcv(final_ticker, period="60d", interval="60m"),
+            "4h": collector.get_ohlcv(final_ticker, period="120d", interval="1h"),
+            "1d": collector.get_ohlcv(final_ticker, period="1y", interval="1d"),
+            "1wk": collector.get_ohlcv(final_ticker, period="5y", interval="1wk"),
+        }
+        
+        # 각 시간 프레임별 분석
+        analyses = {}
+        for interval, df in timeframes.items():
+            if df is not None and not df.empty:
+                # 간단한 기술적 분석
+                from src.agents.analyst import TechnicalAnalyzer
+                ta = TechnicalAnalyzer()
+                
+                analysis = {
+                    "interval": interval,
+                    "current_price": float(df['Close'].iloc[-1]),
+                    "trend": "상승" if df['Close'].iloc[-1] > df['Close'].iloc[-20] else "하락",
+                    "rsi": float(ta.calculate_rsi(df).iloc[-1]) if len(df) > 14 else None,
+                }
+                analyses[interval] = analysis
+        
+        return {
+            "ticker": final_ticker,
+            "timeframes": safe_serialize(analyses),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Multi-timeframe error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === 헬스 체크 ===
+@app.get("/api/health")
+async def health_check():
+    """
+    API 서버 상태 확인
+    """
+    return {
+        "status": "healthy",
+        "version": "2.0.0",
+        "features": {
+            "ai_chat": chat_assistant.use_ai,
+            "calendar": True,
+            "portfolio": True,
+            "screener": True,
+            "multi_timeframe": True
+        },
+        "timestamp": datetime.now().isoformat()
+    }
+
+# 실행용: uvicorn src.api.server:app --reload --host 0.0.0.0 --port 8000

@@ -1,0 +1,13 @@
+{
+  "style": "aggressive_growth",
+  "style_name": "공격적 성장형",
+  "survey_answers": {
+    "risk_tolerance": 4,
+    "time_horizon": "long",
+    "loss_tolerance": 5,
+    "investment_goal": "growth",
+    "trading_frequency": "monthly"
+  },
+  "created_at": "2026-02-10T19:04:21.728754",
+  "updated_at": "2026-02-10T19:04:21.728765"
+}

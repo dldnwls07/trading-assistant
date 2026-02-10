@@ -399,149 +399,238 @@ class FundamentalAnalyzer:
             "details": details
         }
 
+class MacroAnalyzer:
+    """
+    거시적 관점 분석 - 시장 지수 동조화 및 장기 추세 분석
+    """
+    def analyze(self, ticker: str, daily_df: pd.DataFrame, index_df: pd.DataFrame = None) -> Dict[str, Any]:
+        if daily_df is None or len(daily_df) < 20:
+            return {"score": 50, "summary": "데이터 부족", "details": []}
+            
+        score = 50
+        details = []
+        reasons = []
+        
+        # 1. 지수 동조화 (Correlation) 분석
+        if index_df is not None and not index_df.empty:
+            common_idx = daily_df.index.intersection(index_df.index)
+            if len(common_idx) > 10:
+                stock_ret = daily_df.loc[common_idx, 'Close'].pct_change().dropna()
+                idx_ret = index_df.loc[common_idx, 'Close'].pct_change().dropna()
+                corr = stock_ret.corr(idx_ret)
+                
+                if corr > 0.7:
+                    details.append(f"🌐 시장 지수와 높은 동조화({corr:.2f})를 보임. 시장 흐름에 민감합니다.")
+                    if idx_ret.iloc[-1] > 0: score += 5
+                elif corr < 0.3:
+                    details.append(f"💎 시장과 독립적인 흐름({corr:.2f})을 보임. 개별 모멘텀이 중요합니다.")
+                    score += 5
+
+        # 2. 장기 이평선(200일선) 위치 분석
+        if 'SMA_200' in daily_df.columns:
+            last_price = daily_df['Close'].iloc[-1]
+            sma_200 = daily_df['SMA_200'].iloc[-1]
+            if not pd.isna(sma_200):
+                ratio = last_price / sma_200
+                if ratio > 1.15:
+                    details.append(f"⚠️ 200일선 대비 {ratio:.1f}배 상회. 기술적 부담이 있는 구간입니다.")
+                    score -= 5
+                elif ratio < 0.85:
+                    details.append(f"📉 200일선 대비 {ratio:.1f}배 하회. 과매도 및 장기 저평가 가능성.")
+                    score += 10
+        
+        return {
+            "score": max(0, min(100, score)),
+            "summary": "; ".join(reasons) if reasons else "중립",
+            "details": details
+        }
+
+class VolumePriceAnalyzer:
+    """
+    수급 및 에너지 분석 - OBV 및 거래량 패턴 분석
+    """
+    def calculate_obv(self, df: pd.DataFrame) -> pd.Series:
+        return (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
+
+    def analyze(self, df: pd.DataFrame) -> Dict[str, Any]:
+        if df is None or len(df) < 20:
+            return {"score": 50, "summary": "데이터 부족", "details": []}
+            
+        score = 50
+        details = []
+        reasons = []
+        
+        # 1. OBV 분석
+        obv = self.calculate_obv(df)
+        curr_obv = obv.iloc[-1]
+        prev_obv = obv.iloc[-5]
+        if curr_obv > prev_obv:
+            score += 10
+            details.append("💰 OBV 지표 상승: 매수세가 지속적으로 유입되고 있습니다.")
+        else:
+            score -= 5
+            details.append("💸 OBV 지표 하락: 단기 자금 유출 신호가 감지됩니다.")
+            
+        # 2. 거래량 폭발 분석
+        avg_vol = df['Volume'].tail(20).mean()
+        curr_vol = df['Volume'].iloc[-1]
+        if curr_vol > avg_vol * 2:
+            if df['Close'].iloc[-1] > df['Open'].iloc[-1]:
+                score += 15
+                details.append(f"🔥 평소 대비 {curr_vol/avg_vol:.1f}배 대량 거래를 동반한 강한 상승이 포착되었습니다.")
+            else:
+                score -= 15
+                details.append(f"⚠️ 평소 대비 {curr_vol/avg_vol:.1f}배 대량 거래를 동반한 하락이 발생했습니다. 매물 주의.")
+
+        return {
+            "score": max(0, min(100, score)),
+            "summary": "; ".join(reasons) if reasons else "중립",
+            "details": details
+        }
+
+class PsychologicalAnalyzer:
+    """
+    심리 분석 - 이격도 및 뉴스 감성 점수 통합
+    """
+    def analyze(self, df: pd.DataFrame, sentiment_data: dict = None) -> Dict[str, Any]:
+        if df is None or len(df) < 5:
+            return {"score": 50, "summary": "데이터 부족", "details": []}
+            
+        score = 50
+        details = []
+        
+        # 1. 20일 이격도 (대중 심리)
+        sma_20 = df['Close'].rolling(window=20).mean()
+        disparity = (df['Close'].iloc[-1] / sma_20.iloc[-1]) * 100
+        if disparity > 112:
+            score -= 10
+            details.append(f"🌡️ 20일 이격도 {disparity:.1f}%: 대중적 과열 상태입니다. 조정에 유의하세요.")
+        elif disparity < 88:
+            score += 15
+            details.append(f"❄️ 20일 이격도 {disparity:.1f}%: 공포에 의한 단기 저점 구간입니다.")
+            
+        # 2. 뉴스 감성 통합
+        if sentiment_data and sentiment_data.get('label') != 'unknown':
+            label = sentiment_data['label']
+            s_score = sentiment_data.get('score', 0)
+            if label == 'positive':
+                score += (10 * s_score)
+                details.append(f"💬 뉴스/여론: 긍정적 ({s_score*100:.0f}%)")
+            elif label == 'negative':
+                score -= (10 * s_score)
+                details.append(f"💬 뉴스/여론: 부정적 ({s_score*100:.0f}%)")
+
+        return {
+            "score": max(0, min(100, score)),
+            "summary": "분석 완료",
+            "details": details
+        }
+
 class StockAnalyst:
     """
-    종합 분석 엔진 - 기술적 + 기본적 분석 통합
+    종합 분석 엔진 - 기술적 + 기본적 + 거시적 + 수급 + 심리 통합
     """
     def __init__(self):
         self.tech = TechnicalAnalyzer()
         self.fund = FundamentalAnalyzer()
+        self.macro = MacroAnalyzer()
+        self.vol_price = VolumePriceAnalyzer()
+        self.psych = PsychologicalAnalyzer()
         
-    def analyze_ticker(self, ticker: str, daily_df: pd.DataFrame, financials: list = None, hourly_df: pd.DataFrame = None) -> dict:
-        """
-        Daily(추세) + Hourly(타점) 복합 스마트 분석
-        """
+    def analyze_ticker(self, ticker: str, daily_df: pd.DataFrame, financials: list = None, hourly_df: pd.DataFrame = None, index_df: pd.DataFrame = None, sentiment_data: dict = None) -> dict:
+        """종합 분석 메인 루틴"""
+        daily_tech = self._analyze_df(daily_df)
+        hourly_tech = self._analyze_df(hourly_df) if hourly_df is not None else None
+        fundamental = self.fund.analyze(financials) if financials else {"score": 50, "summary": "재무 데이터 없음"}
+        
+        # 신규 관점 분석
+        macro = self.macro.analyze(ticker, daily_df, index_df)
+        vol_price = self.vol_price.analyze(daily_df)
+        psych = self.psych.analyze(daily_df, sentiment_data)
+        
         res = {
             "ticker": ticker,
-            "daily_analysis": self._analyze_df(daily_df),
-            "hourly_analysis": self._analyze_df(hourly_df) if hourly_df is not None else None,
-            "fundamental": self._analyze_fundamentals(financials) if financials else {"score": 50, "summary": "재무 데이터 없음"},
+            "daily_analysis": daily_tech,
+            "hourly_analysis": hourly_tech,
+            "fundamental": fundamental,
+            "macro": macro,
+            "volume_price": vol_price,
+            "psychology": psych,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
-        # 종합 점수 산출 (Danelfin/Fint 스타일)
+        # 종합 점수 산출
         res["final_score"] = self._calculate_smart_score(res)
         res["signal"] = self._get_signal_text(res["final_score"])
-        
-        # 매수/매도 타점 제안
         res["entry_points"] = self._calculate_entry_points(daily_df, hourly_df)
-        
-        # 상세 리포트 생성
         res["full_report"] = self._generate_full_report(res)
 
         return res
 
     def _analyze_df(self, df: pd.DataFrame) -> dict:
         if df is None or df.empty: return None
-        
-        # 기존 TechnicalAnalyzer의 analyze 메서드를 사용하여 지표 계산
-        tech_analysis_result = self.tech.analyze(df)
-        
-        analysis = {
+        tech_res = self.tech.analyze(df)
+        return {
             "last_close": float(df['Close'].iloc[-1]),
-            "score": tech_analysis_result['score'],
-            "rsi": tech_analysis_result['rsi'],
-            "macd": {'MACD': tech_analysis_result['macd'], 'Signal': tech_analysis_result['signal']},
-            "summary": tech_analysis_result['summary'],
-            "details": tech_analysis_result['details'],
-            "patterns": tech_analysis_result['patterns'],
-            "entry_points": tech_analysis_result['entry_points']
+            "score": tech_res['score'],
+            "rsi": tech_res['rsi'],
+            "macd": {'MACD': tech_res['macd'], 'Signal': tech_res['signal']},
+            "summary": tech_res['summary'],
+            "details": tech_res['details'],
+            "patterns": tech_res['patterns'],
+            "entry_points": tech_res['entry_points']
         }
-        return analysis
-
-    def _analyze_fundamentals(self, financials: list[Any]) -> Dict[str, Any]:
-        return self.fund.analyze(financials)
 
     def _calculate_smart_score(self, res: dict) -> int:
-        score = 50
-        daily = res["daily_analysis"]
-        hourly = res["hourly_analysis"]
+        """가중치 기반 종합 스코어링"""
+        scores = {
+            "tech": res["daily_analysis"]["score"] if res["daily_analysis"] else 50,
+            "fund": res["fundamental"].get("score", 50),
+            "macro": res["macro"].get("score", 50),
+            "vol": res["volume_price"].get("score", 50),
+            "psych": res["psychology"].get("score", 50)
+        }
         
-        # Daily analysis contributes to overall trend (e.g., 40% weight)
-        if daily:
-            # Use the score from TechnicalAnalyzer for daily data as a base
-            score += (daily["score"] - 50) * 0.4 # Adjust based on daily score deviation from 50
-            
-            # Additional specific daily indicators
-            rsi_d = daily.get("rsi")
-            if rsi_d is not None:
-                if rsi_d < 30: score += 5
-                if rsi_d > 70: score -= 5
-            
-            macd_d = daily.get("macd")
-            if macd_d and macd_d.get("MACD") is not None and macd_d.get("Signal") is not None:
-                if macd_d["MACD"] > macd_d["Signal"]: score += 5
-            
-            # Pattern weighting
-            for p in daily["patterns"]:
-                if p["type"] == "bullish_reversal" or p["type"] == "bullish_continuation": score += 5
-                if p["type"] == "bearish": score -= 5
-
-        # Hourly analysis contributes to entry/exit timing (e.g., 30% weight)
-        if hourly:
-            # Use the score from TechnicalAnalyzer for hourly data
-            score += (hourly["score"] - 50) * 0.3 # Adjust based on hourly score deviation from 50
-
-            # Additional specific hourly indicators for timing
-            rsi_h = hourly.get("rsi")
-            if rsi_h is not None and rsi_h < 35: score += 5
-            
-            macd_h = hourly.get("macd")
-            if macd_h and macd_h.get("MACD") is not None and macd_h.get("Signal") is not None:
-                if macd_h["MACD"] > macd_h["Signal"]: score += 3
-            
-        # Fundamental analysis contributes to long-term value (e.g., 30% weight)
-        fund_score = res["fundamental"].get("score", 50)
-        score += (fund_score - 50) * 0.3 # Adjust based on fundamental score deviation from 50
+        # 가중치: 기술(30%), 기본(20%), 거시(20%), 수급(15%), 심리(15%)
+        weighted = (scores["tech"] * 0.30 + scores["fund"] * 0.20 + 
+                    scores["macro"] * 0.20 + scores["vol"] * 0.15 + 
+                    scores["psych"] * 0.15)
         
-        return int(max(0, min(100, score)))
+        # 거시 필터링: 지수가 극도로 불안정하면 전체 점수 하향
+        if scores["macro"] < 40: weighted *= 0.8
+        
+        # 시간봉(Timing) 반영 (단기 타점 보정)
+        if res["hourly_analysis"]:
+            weighted = (weighted * 0.7) + (res["hourly_analysis"]["score"] * 0.3)
+            
+        return int(max(0, min(100, weighted)))
 
     def _get_signal_text(self, score: int) -> str:
-        if score >= 85: return "🚀 강력 매수 (Strong Buy)"
-        if score >= 65: return "📈 매수 권고 (Buy)"
-        if score >= 45: return "💬 중립 (Neutral)"
-        if score >= 25: return "📉 매도 권고 (Sell)"
+        if score >= 80: return "🚀 강력 매수 (Strong Buy)"
+        if score >= 60: return "📈 매수 권고 (Buy)"
+        if score >= 40: return "💬 중립 (Neutral)"
+        if score >= 20: return "📉 매도 권고 (Sell)"
         return "⚠️ 강력 매도 (Strong Sell)"
 
     def _calculate_entry_points(self, daily_df: pd.DataFrame, hourly_df: pd.DataFrame) -> Dict[str, Any]:
-        # Prioritize hourly entry points if available, otherwise use daily
         if hourly_df is not None and not hourly_df.empty:
-            hourly_tech_res = self.tech.analyze(hourly_df)
-            return hourly_tech_res.get('entry_points', {})
-        elif daily_df is not None and not daily_df.empty:
-            daily_tech_res = self.tech.analyze(daily_df)
-            return daily_tech_res.get('entry_points', {})
-        return {}
+            return self.tech.analyze(hourly_df).get('entry_points', {})
+        return self.tech.analyze(daily_df).get('entry_points', {}) if daily_df is not None else {}
 
     def _generate_full_report(self, res: dict) -> str:
-        ticker = res["ticker"]
-        signal = res["signal"]
-        final_score = res["final_score"]
-        daily = res["daily_analysis"]
-        fundamental = res["fundamental"]
-        
-        # 상세 리포트 생성
-        full_report = []
-        full_report.append(f"═══════════════════════════════════════")
-        full_report.append(f"📊 {ticker} Smart Analysis Report")
-        full_report.append(f"═══════════════════════════════════════")
-        full_report.append(f"")
-        full_report.append(f"🎯 종합 판단: {signal}")
-        full_report.append(f"📊 AI 확률 스코어: {final_score}/100")
-        full_report.append(f"")
-        
-        if daily:
-            full_report.append(f"───────────────────────────────────────")
-            full_report.append(f"📉 기술적 분석 지표 (일봉)")
-            full_report.append(f"───────────────────────────────────────")
-            for detail in daily.get('details', []):
-                full_report.append(detail)
-            
-        full_report.append(f"")
-        full_report.append(f"───────────────────────────────────────")
-        full_report.append(f"📋 기본적 분석 (재무제표)")
-        full_report.append(f"───────────────────────────────────────")
-        for detail in fundamental.get('details', []):
-            full_report.append(detail)
-            
-        return "\n".join(full_report)
+        sections = [
+            ("📉 기술적 관점 (Chart)", "daily_analysis"),
+            ("🌐 거시적 관점 (Macro)", "macro"),
+            ("💰 수급 및 에너지 (Volume)", "volume_price"),
+            ("🧠 심리적 관점 (Psychology)", "psychology"),
+            ("📋 재무 건전성 (Fund)", "fundamental")
+        ]
+        rpt = [f"📊 {res['ticker']} Comprehensive Analysis Report", f"🎯 종합 신호: {res['signal']} ({res['final_score']}/100)", ""]
+        for title, key in sections:
+            rpt.append(f"[{title}]")
+            data = res.get(key, {})
+            if data and "details" in data:
+                for d in data["details"]: rpt.append(f" • {d}")
+            else: rpt.append(" • 분석 데이터가 충분하지 않습니다.")
+            rpt.append("")
+        return "\n".join(rpt)
