@@ -315,7 +315,14 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
         const timer = setTimeout(buildChart, 100);
         const resizer = () => { if (chartRef.current) chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth, height: chartContainerRef.current.clientHeight }); };
         window.addEventListener('resize', resizer);
-        return () => { clearTimeout(timer); window.removeEventListener('resize', resizer); };
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('resize', resizer);
+            if (chartRef.current) {
+                chartRef.current.remove();
+                chartRef.current = null;
+            }
+        };
     }, [data, interval, options, analysis, isFullscreen, hLines, tLines, drawingMode, drawingState]);
 
     return (

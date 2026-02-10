@@ -32,7 +32,7 @@ app = FastAPI(
 # CORS (크롬 확장 프로그램에서 접근 가능하도록 허용)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 모든 출처 허용 (로컬 개발 편의성)
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
