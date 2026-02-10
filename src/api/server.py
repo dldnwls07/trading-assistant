@@ -284,7 +284,7 @@ async def get_history(ticker: str, interval: str = "1d"):
                 "bb_lower": float(row["BB_Lower"]) if not pd.isna(row["BB_Lower"]) else None,
             })
             
-        return {"ticker": final_ticker, "interval": interval, "data": history}
+        return safe_serialize({"ticker": final_ticker, "interval": interval, "data": history})
     except Exception as e:
         logger.error(f"History error: {e}")
         return {"ticker": ticker, "data": [], "error": str(e)}
@@ -356,11 +356,11 @@ async def chat(req: ChatRequest):
     """
     try:
         response = chat_assistant.chat(req.message, req.context)
-        return {
+        return safe_serialize({
             "message": req.message,
             "response": response,
             "timestamp": datetime.now().isoformat()
-        }
+        })
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -373,7 +373,7 @@ async def chat_suggestions(ticker: Optional[str] = None):
     try:
         context = {"ticker": ticker} if ticker else None
         suggestions = chat_assistant.suggest_questions(context)
-        return {"suggestions": suggestions}
+        return safe_serialize({"suggestions": suggestions})
     except Exception as e:
         logger.error(f"Suggestions error: {e}")
         return {"suggestions": []}
@@ -505,11 +505,11 @@ async def multi_timeframe_analysis(ticker: str):
                 }
                 analyses[interval] = analysis
         
-        return {
+        return safe_serialize({
             "ticker": final_ticker,
-            "timeframes": safe_serialize(analyses),
+            "timeframes": analyses,
             "timestamp": datetime.now().isoformat()
-        }
+        })
     except Exception as e:
         logger.error(f"Multi-timeframe error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

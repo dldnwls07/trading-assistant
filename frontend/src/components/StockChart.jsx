@@ -74,7 +74,13 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
                 // (1) Prepare and Sort Data with Extreme Precision
                 const processed = data
                     .map(d => ({ ...d, _ts: new Date(d.time || d.Date).getTime() }))
-                    .filter(d => !isNaN(d._ts))
+                    .filter(d =>
+                        !isNaN(d._ts) &&
+                        typeof d.open === 'number' &&
+                        typeof d.high === 'number' &&
+                        typeof d.low === 'number' &&
+                        typeof d.close === 'number'
+                    )
                     .sort((a, b) => a._ts - b._ts);
 
                 const finalData = [];

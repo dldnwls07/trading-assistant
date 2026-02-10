@@ -27,7 +27,7 @@ const INTERVALS = [
 ];
 
 const AnalysisPage = () => {
-    const [ticker, setTicker] = useState('AAPL'); // Default Ticker
+    const [ticker, setTicker] = useState(''); // Default Ticker removed
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [analysis, setAnalysis] = useState(null);
@@ -73,15 +73,12 @@ const AnalysisPage = () => {
     useEffect(() => {
         if (analysis?.ticker) {
             updateHistory(analysis.ticker, selectedInterval);
-        } else if (ticker) {
-            // 초기 로드 시에도 데이터 가져오기 시도 (Optional)
-            // handleSearch(ticker); 
         }
     }, [selectedInterval]);
 
     // 초기 로드 시 분석 실행
     useEffect(() => {
-        handleSearch(ticker);
+        if (ticker) handleSearch(ticker);
     }, []);
 
     const updateHistory = async (symbol, interval) => {
