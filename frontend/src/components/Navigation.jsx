@@ -12,17 +12,19 @@ import {
     X
 } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from '../utils/translations';
 
 const Navigation = ({ settings, onOpenSettings }) => {
     const location = useLocation();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const t = useTranslation(settings);
 
     const navItems = [
-        { path: '/', label: 'Markets', icon: BarChart2 },
-        { path: '/chat', label: 'AI Analysis', icon: MessageSquare },
-        { path: '/calendar', label: 'Calendar', icon: Calendar },
-        { path: '/portfolio', label: 'Portfolio', icon: PieChart },
-        { path: '/screener', label: 'Screener', icon: TrendingUp },
+        { path: '/', label: t.analysis, icon: BarChart2 },
+        { path: '/chat', label: t.chat, icon: MessageSquare },
+        { path: '/calendar', label: t.calendar, icon: Calendar },
+        { path: '/portfolio', label: t.portfolio, icon: PieChart },
+        { path: '/screener', label: t.screener, icon: TrendingUp },
     ];
 
     const isDark = settings?.darkMode;
@@ -68,7 +70,11 @@ const Navigation = ({ settings, onOpenSettings }) => {
 
                     {/* Right Side Icons */}
                     <div className="flex items-center space-x-3">
-                        <button className={`p-2 rounded-full transition-colors ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}`}>
+                        <button
+                            onClick={() => window.location.href = '/'}
+                            className={`p-2 rounded-full transition-colors ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}`}
+                            title="검색"
+                        >
                             <Search className="h-5 w-5" />
                         </button>
 
@@ -80,12 +86,20 @@ const Navigation = ({ settings, onOpenSettings }) => {
                             <Settings className="h-5 w-5" />
                         </button>
 
-                        <button className={`p-2 rounded-full transition-colors relative ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}`}>
+                        <button
+                            onClick={() => alert('알림 기능은 곧 출시됩니다!')}
+                            className={`p-2 rounded-full transition-colors relative ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}`}
+                            title="알림"
+                        >
                             <Bell className="h-5 w-5" />
                             <span className="absolute top-2 right-2 block h-2 w-2 rounded-full ring-2 ring-transparent bg-red-500 shadow-sm shadow-red-500/50"></span>
                         </button>
 
-                        <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-sm cursor-pointer border shadow-sm ${isDark ? 'bg-slate-800 border-slate-700 text-blue-400' : 'bg-blue-50 border-blue-100 text-blue-600'}`}>
+                        <div
+                            onClick={() => alert('사용자 메뉴는 곧 출시됩니다!')}
+                            className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-sm cursor-pointer border shadow-sm ${isDark ? 'bg-slate-800 border-slate-700 text-blue-400' : 'bg-blue-50 border-blue-100 text-blue-600'}`}
+                            title="사용자 메뉴"
+                        >
                             JD
                         </div>
 

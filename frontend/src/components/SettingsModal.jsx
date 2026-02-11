@@ -1,11 +1,13 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Globe, Moon, Sun, Bell, Shield, Settings } from 'lucide-react';
+import { useTranslation } from '../utils/translations';
 
 const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
     if (!isOpen) return null;
 
     const isDark = settings?.darkMode;
+    const t = useTranslation(settings);
 
     const languages = [
         { code: 'ko', name: '한국어', icon: '🇰🇷' },
@@ -29,7 +31,7 @@ const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
                             <div className="bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-500/20">
                                 <Settings className="w-5 h-5" />
                             </div>
-                            <h2 className="text-xl font-black">System Settings</h2>
+                            <h2 className="text-xl font-black">{t.settings}</h2>
                         </div>
                         <button onClick={onClose} className={`p-2 rounded-full transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-gray-200 text-gray-500'}`}>
                             <X className="w-6 h-6" />
@@ -41,13 +43,13 @@ const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
                         {/* Language Section */}
                         <section>
                             <label className={`text-[10px] font-black uppercase tracking-[0.2em] mb-4 block ${isDark ? 'text-slate-500' : 'text-gray-400'}`}>
-                                Language Preferences
+                                {t.language}
                             </label>
                             <div className="grid grid-cols-2 gap-3">
                                 {languages.map((lang) => (
                                     <button
                                         key={lang.code}
-                                        onClick={() => setSettings({ ...settings, language: lang.code })}
+                                        onClick={() => setSettings(prev => ({ ...prev, language: lang.code }))}
                                         className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${settings.language === lang.code
                                             ? (isDark ? 'border-blue-500 bg-blue-500/10 text-blue-400' : 'border-blue-600 bg-blue-50 text-blue-700 shadow-md')
                                             : (isDark ? 'border-slate-800 hover:border-slate-700 text-slate-400' : 'border-gray-100 hover:border-gray-200 text-gray-600')
@@ -63,7 +65,7 @@ const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
                         {/* General Section */}
                         <section className="space-y-4">
                             <label className={`text-[10px] font-black uppercase tracking-[0.2em] mb-4 block ${isDark ? 'text-slate-500' : 'text-gray-400'}`}>
-                                Visual & Signals
+                                {t.set_visual_signals}
                             </label>
 
                             <div className={`flex items-center justify-between p-5 rounded-3xl transition-colors ${isDark ? 'bg-slate-800/50 border border-slate-800' : 'bg-gray-50 border border-transparent'}`}>
@@ -72,16 +74,17 @@ const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
                                         {isDark ? <Moon className="w-5 h-5 text-blue-400" /> : <Sun className="w-5 h-5 text-orange-400" />}
                                     </div>
                                     <div>
-                                        <p className="font-black text-sm">Theme Mode</p>
-                                        <p className="text-[10px] opacity-50 font-bold uppercase tracking-wider">{isDark ? 'Dark Optimized' : 'Light Standard'}</p>
+                                        <p className="font-black text-sm">{t.darkMode}</p>
+                                        <p className="text-[10px] opacity-50 font-bold uppercase tracking-wider">{isDark ? t.set_dark_opt : t.set_light_std}</p>
                                     </div>
                                 </div>
                                 <button
-                                    onClick={() => setSettings({ ...settings, darkMode: !settings.darkMode })}
+                                    onClick={() => setSettings(prev => ({ ...prev, darkMode: !prev.darkMode }))}
                                     className={`w-14 h-7 rounded-full transition-all relative ${isDark ? 'bg-blue-600 shadow-lg shadow-blue-500/20' : 'bg-gray-300'}`}
                                 >
                                     <motion.div
                                         animate={{ x: isDark ? 28 : 4 }}
+                                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
                                         className="absolute top-1 w-5 h-5 bg-white rounded-full shadow-md"
                                     />
                                 </button>
@@ -93,16 +96,17 @@ const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
                                         <Bell className={`w-5 h-5 ${settings.notifications ? (isDark ? 'text-blue-400' : 'text-blue-600') : 'text-gray-400'}`} />
                                     </div>
                                     <div>
-                                        <p className="font-black text-sm">Real-time Pulse</p>
-                                        <p className="text-[10px] opacity-50 font-bold uppercase tracking-wider">Push Notifications</p>
+                                        <p className="font-black text-sm">{t.set_realtime_pulse}</p>
+                                        <p className="text-[10px] opacity-50 font-bold uppercase tracking-wider">{t.set_push_notif}</p>
                                     </div>
                                 </div>
                                 <button
-                                    onClick={() => setSettings({ ...settings, notifications: !settings.notifications })}
+                                    onClick={() => setSettings(prev => ({ ...prev, notifications: !prev.notifications }))}
                                     className={`w-14 h-7 rounded-full transition-all relative ${settings.notifications ? (isDark ? 'bg-blue-600 shadow-lg shadow-blue-500/20' : 'bg-blue-600') : 'bg-gray-300'}`}
                                 >
                                     <motion.div
                                         animate={{ x: settings.notifications ? 28 : 4 }}
+                                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
                                         className="absolute top-1 w-5 h-5 bg-white rounded-full shadow-md"
                                     />
                                 </button>
@@ -117,8 +121,8 @@ const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
                         </p>
                     </div>
                 </motion.div>
-            </div>
-        </AnimatePresence>
+            </div >
+        </AnimatePresence >
     );
 };
 

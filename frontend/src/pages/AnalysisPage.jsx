@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StockChart } from '../components/StockChart';
@@ -16,6 +17,7 @@ import {
     ChevronRight,
     MessageSquare
 } from 'lucide-react';
+import { useTranslation } from '../utils/translations';
 
 const API_BASE = 'http://127.0.0.1:8000';
 
@@ -29,7 +31,8 @@ const INTERVALS = [
 ];
 
 const AnalysisPage = ({ settings }) => {
-    const [ticker, setTicker] = useState('005930');
+    const { tickerParam } = useParams();
+    const [ticker, setTicker] = useState(tickerParam || '');
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [analysis, setAnalysis] = useState(null);
@@ -37,9 +40,11 @@ const AnalysisPage = ({ settings }) => {
     const [loading, setLoading] = useState(false);
     const [selectedInterval, setSelectedInterval] = useState('1d');
     const [selectedView, setSelectedView] = useState('short'); // short, medium, long
+    const [chartType, setChartType] = useState('Candle');
     const [isReportOpen, setIsReportOpen] = useState(false);
 
     const isDark = settings?.darkMode;
+    const t = useTranslation(settings);
 
     // 검색어 추천 로직
     useEffect(() => {
@@ -64,9 +69,10 @@ const AnalysisPage = ({ settings }) => {
         setShowSuggestions(false);
 
         try {
+            const encodedSym = encodeURIComponent(sym);
             const [analReq, histReq] = await Promise.allSettled([
-                axios.get(`${API_BASE}/analyze/${sym}?lang=${settings.language}`),
-                axios.get(`${API_BASE}/history/${encodeURIComponent(sym)}?interval=${selectedInterval}`)
+                axios.get(`${API_BASE}/analyze/${encodedSym}?lang=${settings.language}`),
+                axios.get(`${API_BASE}/history/${encodedSym}?interval=${selectedInterval}`)
             ]);
 
             if (analReq.status === 'fulfilled') {
@@ -77,8 +83,13 @@ const AnalysisPage = ({ settings }) => {
         } catch (err) { console.error(err); } finally { setLoading(false); }
     };
 
-    // 초기 검색
-    useEffect(() => { handleSearch(); }, []);
+    // 초기 검색 및 파라미터 변경 시 대응
+    useEffect(() => {
+        if (tickerParam) {
+            handleSearch(tickerParam);
+        }
+        // 자동 검색 제거: 사용자가 직접 검색하도록 변경
+    }, [tickerParam]);
 
     return (
         <div className={`min-h-screen pb-12 transition-colors duration-300 ${isDark ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
@@ -149,7 +160,7 @@ const AnalysisPage = ({ settings }) => {
                                 value={ticker}
                                 onChange={(e) => { setTicker(e.target.value.toUpperCase()); setShowSuggestions(true); }}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                placeholder="Search Symbol (e.g. AAPL, TSLA, 005930)..."
+                                placeholder={t.ana_search_placeholder}
                                 className="w-full bg-transparent border-none outline-none font-bold placeholder:text-gray-400"
                             />
                             {loading && <div className="ml-2 h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>}
@@ -189,7 +200,7 @@ const AnalysisPage = ({ settings }) => {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className={`p-8 rounded-3xl border shadow-xl flex flex-col items-center justify-center relative overflow-hidden transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
                         <div className="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
-                        <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2 px-3 py-1 bg-blue-500/5 rounded-full">AI Confidence Score</span>
+                        <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2 px-3 py-1 bg-blue-500/5 rounded-full">{t.ana_ai_score}</span>
                         <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-blue-400 to-blue-600 drop-shadow-sm">{analysis?.final_score || '--'}</div>
                     </div>
                     <div className={`p-8 rounded-3xl border shadow-xl flex flex-col items-center justify-center transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
@@ -208,21 +219,21 @@ const AnalysisPage = ({ settings }) => {
                         </div>
                         <div className="flex justify-around items-center">
                             <div className="text-center group">
-                                <p className="text-[10px] text-rose-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">Stop Loss</p>
+                                <p className="text-[10px] text-rose-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">{t.ana_stop_loss}</p>
                                 <p className="text-xl font-black opacity-90">
                                     {analysis?.[`${selectedView}_term`]?.entry_points?.stop_loss?.toLocaleString() || '--'}
                                 </p>
                             </div>
                             <div className={`h-12 w-px ${isDark ? 'bg-slate-800' : 'bg-gray-100'}`} />
                             <div className="text-center group">
-                                <p className="text-[10px] text-blue-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">Entry Zone</p>
+                                <p className="text-[10px] text-blue-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">{t.ana_entry_zone}</p>
                                 <p className="text-3xl font-black text-blue-600 shadow-blue-500/10 drop-shadow-sm">
                                     {analysis?.[`${selectedView}_term`]?.entry_points?.buy_zone?.[0]?.price?.toLocaleString() || '--'}
                                 </p>
                             </div>
                             <div className={`h-12 w-px ${isDark ? 'bg-slate-800' : 'bg-gray-100'}`} />
                             <div className="text-center group">
-                                <p className="text-[10px] text-emerald-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">Take Profit</p>
+                                <p className="text-[10px] text-emerald-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">{t.ana_take_profit}</p>
                                 <p className="text-xl font-black opacity-90">
                                     {analysis?.[`${selectedView}_term`]?.entry_points?.take_profit?.toLocaleString() || '--'}
                                 </p>
@@ -247,26 +258,32 @@ const AnalysisPage = ({ settings }) => {
                             ))}
                         </div>
 
-                        {/* Hidden setting logic moved to Navigation, so here we provide local status display or simple chart toggles if needed */}
+                        {/* Chart Render Type Toggle */}
                         <div className="hidden lg:flex items-center gap-2">
                             <div className={`h-8 w-px mx-4 ${isDark ? 'bg-slate-800' : 'bg-gray-200'}`} />
                             <span className="text-[10px] font-black text-gray-400 uppercase mr-2">Chart Render</span>
                             <div className="flex gap-1">
                                 {['Line', 'Candle', 'Area'].map(t => (
-                                    <button key={t} className={`px-3 py-1 rounded-full text-[10px] font-black border transition-all ${t === 'Candle' ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-200 opacity-50'}`}>{t}</button>
+                                    <button
+                                        key={t}
+                                        onClick={() => setChartType(t)}
+                                        className={`px-3 py-1 rounded-full text-[10px] font-black border transition-all ${chartType === t ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-200 opacity-50 hover:opacity-100'}`}
+                                    >
+                                        {t}
+                                    </button>
                                 ))}
                             </div>
                         </div>
                     </div>
 
-                    <div className="h-[550px] w-full bg-[#131722] relative">
+                    <div className={`h-[550px] w-full relative ${isDark ? 'bg-[#131722]' : 'bg-gray-50'}`}>
                         {loading && (
                             <div className="absolute inset-0 z-10 bg-black/20 backdrop-blur-[2px] flex items-center justify-center">
                                 <Activity className="w-12 h-12 text-blue-500 animate-spin" />
                             </div>
                         )}
                         {history.length > 0 ? (
-                            <StockChart data={history} interval={selectedInterval} options={settings} analysis={analysis} />
+                            <StockChart data={history} interval={selectedInterval} chartType={chartType} options={settings} analysis={analysis} />
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 gap-4">
                                 <Activity className="w-12 h-12 animate-pulse text-blue-500" />
@@ -285,9 +302,9 @@ const AnalysisPage = ({ settings }) => {
                         </h3>
                         <div className={`flex p-1.5 rounded-2xl ${isDark ? 'bg-slate-800' : 'bg-gray-100'}`}>
                             {[
-                                { id: 'short', label: '단기 (1개월)', interval: '60m' },
-                                { id: 'medium', label: '중기 (6개월)', interval: '1d' },
-                                { id: 'long', label: '장기 (1년+)', interval: '1wk' }
+                                { id: 'short', label: t.ana_short_term, interval: '60m' },
+                                { id: 'medium', label: t.ana_medium_term, interval: '1d' },
+                                { id: 'long', label: t.ana_long_term, interval: '1wk' }
                             ].map((v) => (
                                 <button
                                     key={v.id}

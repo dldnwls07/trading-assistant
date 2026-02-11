@@ -61,6 +61,7 @@ function App() {
 
         <Routes>
           <Route path="/" element={<AnalysisPage settings={settings} />} />
+          <Route path="/analysis/:tickerParam" element={<AnalysisPage settings={settings} />} />
           <Route path="/chat" element={<ChatPage settings={settings} />} />
           <Route path="/calendar" element={<CalendarPage settings={settings} />} />
           <Route path="/portfolio" element={<PortfolioPage settings={settings} />} />

@@ -31,14 +31,54 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# CORS (크롬 확장 프로그램에서 접근 가능하도록 허용)
+# CORS (Production Security - No Wildcards)
+origins = [
+    "http://localhost:5173",  # Vite Dev Server
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "chrome-extension://*",   # Extension Support (Restrict ID in prod)
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "*"],
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"], # Limit Methods
+    allow_headers=["Content-Type", "Authorization"], # Limit Headers
 )
+
+# === Rate Limiting (DoS Protection) ===
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# === Input Validation ===
+import re
+def validate_ticker(ticker: str):
+    """Sanitize and validate ticker input"""
+    if not ticker or len(ticker) > 20:
+        raise HTTPException(status_code=400, detail="Invalid ticker length")
+    # Alphanumeric + . for KRX tickers + ^ for indices + = for currencies
+    if not re.match(r"^[A-Za-z0-9\.\^\=]+$", ticker):
+        raise HTTPException(status_code=400, detail="Invalid ticker format")
+    return ticker.upper()
+
+# === Global Exception Handler ===
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global Error: {exc} Path: {request.url.path}")
+    # Production: Hide details
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "error_id": datetime.now().timestamp()},
+    )
 
 # === 전역 인스턴스 (싱글톤) ===
 storage = get_storage()
@@ -52,6 +92,71 @@ chat_assistant = ChatAssistant(gemini_api_key=os.getenv("GEMINI_API_KEY"))
 event_calendar = EventCalendar()
 portfolio_analyzer = PortfolioAnalyzer()
 screener = StockScreener()
+
+# 전역 데이터
+class KRXLoader:
+    def __init__(self):
+        self.df = None
+        self.loading = False
+    
+    def load(self):
+        if self.loading or self.df is not None: return
+        self.loading = True
+        try:
+            import FinanceDataReader as fdr
+            logger.info("Loading KRX data...")
+            self.df = fdr.StockListing('KRX')
+            logger.info(f"Loaded {len(self.df)} KRX symbols.")
+        except Exception as e:
+            logger.error(f"Failed to load KRX data: {e}")
+        finally:
+            self.loading = False
+
+    def search(self, query: str, limit: int = 10) -> List[Dict]:
+        if self.df is None: return []
+        try:
+            q = query.strip()
+            # 이름 또는 코드로 검색
+            mask = self.df['Name'].astype(str).str.contains(q, case=False, na=False) | \
+                   self.df['Code'].astype(str).str.contains(q, case=False, na=False)
+            results = self.df[mask].head(limit)
+            
+            candidates = []
+            for _, row in results.iterrows():
+                market = row['Market']
+                code = str(row['Code'])
+                
+                # 접미사 결정
+                suffix = ".KS" if market in ['KOSPI', 'KOSPI200'] else ".KQ"
+                
+                # 6자리 숫자인 경우에만 접미사 추가, 아니면 그대로 (ETF 등 확인 필요)
+                # TIGER ETF 같은 경우도 6자리 숫자 코드를 가짐
+                symbol = f"{code}{suffix}" if code.isdigit() and len(code) == 6 else code
+                
+                candidates.append({
+                    "symbol": symbol,
+                    "name": row['Name'],
+                    "exchange": market,
+                    "is_korean": True
+                })
+            return candidates
+        except Exception as e:
+            logger.error(f"KRX Search error: {e}")
+            return []
+
+krx_loader = KRXLoader()
+screener = StockScreener()
+
+@app.on_event("startup")
+async def startup_event():
+    import asyncio
+    global screener
+    screener = StockScreener() # Ensure initialized
+    asyncio.create_task(load_krx_bg())
+
+async def load_krx_bg():
+    if krx_loader:
+        krx_loader.load()
 
 # === 모델 정의 ===
 class AnalysisRequest(BaseModel):
@@ -170,25 +275,29 @@ async def run_analysis(ticker: str, lang: str = "ko"):
 async def analyze_post(req: AnalysisRequest):
     """POST 방식 분석 엔드포인트"""
     try:
+        # Validate Input
+        validate_ticker(req.ticker)
         result = await run_analysis(req.ticker)
         return JSONResponse(content=result)
     except HTTPException as he:
         raise he
     except Exception as e:
-        logger.error(f"Analysis error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Analysis POST error: {e}")
+        raise e  # Let global handler handle it
 
 @app.get("/analyze/{ticker}")
 async def analyze_get(ticker: str):
     """GET 방식 분석 엔드포인트 (기존 호환성)"""
     try:
+        # Validate Input
+        validate_ticker(ticker)
         result = await run_analysis(ticker)
         return JSONResponse(content=result)
     except HTTPException as he:
         raise he
     except Exception as e:
-        logger.error(f"Analysis error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Analysis GET error: {e}")
+        raise e
 
 @app.get("/history/{ticker}")
 async def get_history(ticker: str, interval: str = "1d"):
@@ -196,6 +305,9 @@ async def get_history(ticker: str, interval: str = "1d"):
     차트 시각화를 위한 OHLCV 데이터 반환
     """
     try:
+        # Validate Input
+        validate_ticker(ticker)
+        
         # 티커 매핑 수행 (한글명 -> 티커)
         final_ticker = get_final_ticker(ticker)
         
@@ -305,38 +417,58 @@ async def get_history(ticker: str, interval: str = "1d"):
         return safe_serialize({"ticker": final_ticker, "interval": interval, "data": history})
     except Exception as e:
         logger.error(f"History error: {e}")
-        return {"ticker": ticker, "data": [], "error": str(e)}
+        raise e
 
 @app.get("/search")
 async def search_ticker(query: str):
     """
-    티커 검색 (Autocomplete용)
+    티커 검색 (Autocomplete용) - KRX 우선 + Yfinance 보조
     """
     try:
         import yfinance as yf
-        if not query or len(query) < 1:
+        if not query or len(query) < 1 or len(query) > 50: # Limit query length
             return {"query": query, "candidates": []}
             
-        search = yf.Search(query, max_results=8)
-        results = search.quotes
-        
         candidates = []
-        for res in results:
-            sym = res.get("symbol", "")
-            is_kr = sym.endswith((".KS", ".KQ"))
-            candidates.append({
-                "symbol": sym,
-                "name": res.get("shortname") or res.get("longname") or sym,
-                "exchange": res.get("exchange"),
-                "is_korean": is_kr
-            })
-            
-        # 한국어 검색어라면 한국 주식을 우선순위로 정렬
+        
+        # 1. 한국어 포함 시 KRX 로더 우선 사용
         is_korean_query = any(ord('가') <= ord(char) <= ord('힣') for char in query)
-        if is_korean_query:
-            candidates.sort(key=lambda x: x['is_korean'], reverse=True)
+        is_krx_code = query.isdigit() and len(query) >= 3 # 숫자 코드 검색 시도
+        
+        if is_korean_query or is_krx_code or (krx_loader and krx_loader.df is not None):
+            # KRX 로더가 준비되었으면 일단 검색 시도 (영어일 수도 있음 예: TIGER)
+             if krx_loader and krx_loader.df is not None:
+                krx_results = krx_loader.search(query, limit=10)
+                candidates.extend(krx_results)
             
-        return {"query": query, "candidates": candidates}
+        # 2. yfinance 검색 (영어 쿼리일 때 혹은 KRX 결과가 적을 때)
+        # 단, KRX 결과가 충분하면(>5) 스킵하여 속도 향상
+        if len(candidates) < 3 and not is_korean_query:
+            try:
+                search = yf.Search(query, max_results=8)
+                yf_results = search.quotes
+                
+                for res in yf_results:
+                    sym = res.get("symbol", "")
+                    
+                    # 중복 제거 (이미 KRX에서 찾은 심볼이면 스킵)
+                    if any(c['symbol'] == sym for c in candidates):
+                        continue
+                        
+                    is_kr = sym.endswith((".KS", ".KQ"))
+                    candidates.append({
+                        "symbol": sym,
+                        "name": res.get("shortname") or res.get("longname") or sym,
+                        "exchange": res.get("exchange"),
+                        "is_korean": is_kr
+                    })
+            except Exception as e:
+                logger.warning(f"yfinance search error: {e}")
+        
+        # 한국 주식 우선 정렬
+        candidates.sort(key=lambda x: x['is_korean'], reverse=True)
+            
+        return {"query": query, "candidates": candidates[:15]}
         
     except Exception as e:
         logger.error(f"Search error: {e}")
@@ -378,20 +510,31 @@ class ChatRequest(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 @app.post("/api/chat")
-async def chat(req: ChatRequest):
+@limiter.limit("10/minute") # Prevent AI Abuse
+async def chat(req: ChatRequest, request: Request):
     """
     AI 채팅 (Gemini Flash)
     """
     try:
+        # Validate message length
+        if len(req.message) > 1000:
+            raise HTTPException(status_code=400, detail="Message too long")
+        
+        # Validate ticker in context if present
+        if req.ticker:
+            validate_ticker(req.ticker)
+            
         response = chat_assistant.chat(req.message, req.context)
         return safe_serialize({
             "message": req.message,
             "response": response,
             "timestamp": datetime.now().isoformat()
         })
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logger.error(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise e
 
 @app.get("/api/chat/suggestions")
 async def chat_suggestions(ticker: Optional[str] = None):
@@ -423,7 +566,8 @@ async def clear_chat_history():
 async def get_calendar(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    tickers: Optional[str] = None
+    tickers: Optional[str] = None,
+    lang: str = "ko"
 ):
     """
     경제 이벤트 캘린더
@@ -438,34 +582,43 @@ async def get_calendar(
         
         ticker_list = None
         if tickers:
-            ticker_list = [t.strip().upper() for t in tickers.split(",")]
+            ticker_list = [validate_ticker(t.strip()) for t in tickers.split(",")]
         
         calendar_data = event_calendar.get_calendar(
             start_date=start_date,
             end_date=end_date,
-            tickers=ticker_list
+            tickers=ticker_list,
+            lang=lang
         )
         
         return safe_serialize(calendar_data)
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logger.error(f"Calendar error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise e
 
 # === 포트폴리오 분석 ===
 class PortfolioRequest(BaseModel):
     holdings: List[Dict[str, Any]]  # [{"ticker": "AAPL", "shares": 10, "avg_price": 150}]
 
 @app.post("/api/portfolio/analyze")
-async def analyze_portfolio(req: PortfolioRequest):
+@limiter.limit("20/minute")
+async def analyze_portfolio(req: PortfolioRequest, request: Request):
     """
     포트폴리오 AI 분석
     """
     try:
+        for holding in req.holdings:
+            validate_ticker(holding.get("ticker", "AA"))
+            
         result = portfolio_analyzer.analyze_portfolio(req.holdings)
         return safe_serialize(result)
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logger.error(f"Portfolio analysis error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise e
 
 # === AI 추천 종목 ===
 @app.get("/api/screener/recommendations")
@@ -507,6 +660,9 @@ async def multi_timeframe_analysis(ticker: str):
     다중 시간 프레임 종합 분석
     """
     try:
+        # Validate Ticker
+        validate_ticker(ticker)
+        
         final_ticker = get_final_ticker(ticker)
         
         # 여러 시간 프레임 데이터 수집
@@ -538,28 +694,13 @@ async def multi_timeframe_analysis(ticker: str):
             "timeframes": analyses,
             "timestamp": datetime.now().isoformat()
         })
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logger.error(f"Multi-timeframe error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise e
 
-# === 포트폴리오 분석 ===
-class PortfolioRequest(BaseModel):
-    holdings: List[Dict[str, Any]]
 
-@app.post("/api/portfolio/analyze")
-async def analyze_portfolio_endpoint(req: PortfolioRequest):
-    """
-    포트폴리오 종합 분석
-    - 다각화 점수
-    - 상관관계 매트릭스
-    - 리밸런싱 제안
-    """
-    try:
-        result = portfolio_analyzer.analyze_portfolio(req.holdings)
-        return JSONResponse(content=safe_serialize(result))
-    except Exception as e:
-        logger.error(f"Portfolio analysis error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # === 헬스 체크 ===
 @app.get("/api/health")

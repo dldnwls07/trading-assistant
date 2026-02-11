@@ -118,48 +118,52 @@ class StockScreener:
             return None
     
     def _apply_style_filter(self, ticker: str, df: pd.DataFrame, analysis: Dict, style: str) -> float:
-        """투자 스타일별 가중치 적용"""
-        base_score = 100
-        
+        """투자 스타일별 가중치 적용 (분석 결과 구조에 맞춰 수정)"""
         if style == "aggressive_growth":
-            # 공격적 성장: 모멘텀 + 변동성
-            momentum = analysis.get('momentum', {}).get('score', 50)
-            volatility = analysis.get('volatility', {}).get('score', 50)
-            return (momentum * 0.7 + volatility * 0.3)
+            # 공격적 성장: 기술적 지표 + 수급/에너지
+            tech = analysis.get('daily_analysis', {}).get('score', 50)
+            vol = analysis.get('volume_price', {}).get('score', 50)
+            return (tech * 0.6 + vol * 0.4)
         
         elif style == "dividend":
-            # 배당: 안정성 + 펀더멘털
-            fundamental = analysis.get('fundamental', {}).get('score', 50)
-            return fundamental * 1.2
+            # 배당: 펀더멘털 + 심리 안정성
+            fund = analysis.get('fundamental', {}).get('score', 50)
+            psych = analysis.get('psychology', {}).get('score', 50)
+            return (fund * 0.7 + psych * 0.3)
         
         elif style == "value":
-            # 가치투자: 펀더멘털 중시
-            fundamental = analysis.get('fundamental', {}).get('score', 50)
-            return fundamental * 1.5
+            # 가치투자: 펀더멘털 최우선
+            fund = analysis.get('fundamental', {}).get('score', 50)
+            macro = analysis.get('macro', {}).get('score', 50)
+            return (fund * 0.8 + macro * 0.2)
         
         elif style == "momentum":
-            # 모멘텀: 단기 추세
-            momentum = analysis.get('momentum', {}).get('score', 50)
-            return momentum * 1.3
+            # 모멘텀: 기술적 지세 + 수급
+            tech = analysis.get('daily_analysis', {}).get('score', 50)
+            vol = analysis.get('volume_price', {}).get('score', 50)
+            return (tech * 0.7 + vol * 0.3)
         
         else:  # balanced
-            return base_score
+            return 100
     
     def _generate_reason(self, analysis: Dict, style: str) -> str:
-        """추천 이유 생성"""
-        reasons = []
+        """스타일별 특화된 추천 이유 생성"""
+        tech_score = analysis.get('daily_analysis', {}).get('score', 50)
+        fund_score = analysis.get('fundamental', {}).get('score', 50)
+        vol_score = analysis.get('volume_price', {}).get('score', 50)
+        psych_score = analysis.get('psychology', {}).get('score', 50)
         
-        if analysis['final_score'] > 70:
-            reasons.append("강력한 매수 신호")
-        elif analysis['final_score'] > 60:
-            reasons.append("긍정적 전망")
-        
-        tech_score = analysis.get('technical', {}).get('score', 0)
-        if tech_score > 65:
-            reasons.append("기술적 지표 우수")
-        
-        return " | ".join(reasons) if reasons else "종합 분석 결과 양호"
-    
+        if style == "aggressive_growth":
+            return f"강한 모멘텀({tech_score}점)과 에너지 유입({vol_score}점) 포착"
+        elif style == "dividend":
+            return f"안정적 펀더멘털({fund_score}점) 및 심리 저점 형성"
+        elif style == "value":
+            return f"저평가 매력({fund_score}점) 및 안전 마진 확보"
+        elif style == "momentum":
+            return f"추세 추종 적합. 기술적 완성도 {tech_score}점 달성"
+        else:
+            return f"종합 점수 {analysis.get('final_score', 0)}점으로 균형 잡힌 성장세"
+
     def get_market_tickers(self, market: str = "US", limit: int = 50) -> List[str]:
         """시장별 주요 종목 리스트 반환"""
         if market == "US":
@@ -177,7 +181,10 @@ class StockScreener:
                 "000270.KS", "105560.KS", "055550.KS", "096770.KS", "012330.KS",
                 "028260.KS", "066570.KS", "003550.KS", "017670.KS", "034730.KS",
                 "009150.KS", "032830.KS", "018260.KS", "003670.KS", "015760.KS",
-                "086520.KQ", "247540.KQ", "373220.KS", "000100.KS", "011170.KS"
+                "086520.KQ", "247540.KQ", "373220.KS", "000100.KS", "011170.KS",
+                "000810.KS", "033780.KS", "010950.KS", "086790.KS", "005935.KS",
+                "036570.KS", "066970.KS", "034220.KS", "010130.KS", "001500.KS",
+                "004020.KS", "030200.KS", "267250.KS", "011070.KS", "090430.KS"
             ][:limit]
         else:
             return []

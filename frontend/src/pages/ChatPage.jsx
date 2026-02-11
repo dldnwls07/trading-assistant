@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Send, Bot, User, Trash2, Sparkles, AlertCircle } from 'lucide-react';
+import { useTranslation } from '../utils/translations';
 
 const API_BASE = 'http://127.0.0.1:8000';
 
 const ChatPage = ({ settings }) => {
+    const t = useTranslation(settings);
     const [messages, setMessages] = useState([
-        { id: 1, role: 'assistant', content: '안녕하세요! 저는 AI 투자 어시스턴트입니다. 어떤 종목에 대해 분석해 드릴까요? (예: "삼성전자 전망 어때?", "비트코인 지금 사도 돼?")' }
+        { id: 1, role: 'assistant', content: t.chat_desc }
     ]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -166,7 +168,7 @@ const ChatPage = ({ settings }) => {
                                         handleSend();
                                     }
                                 }}
-                                placeholder="Analyze market harmonics..."
+                                placeholder={t.chat_placeholder}
                                 className={`w-full pl-6 pr-16 py-4 rounded-3xl border-2 transition-all resize-none text-sm max-h-48 min-h-[56px] focus:outline-none focus:ring-4 ${isDark
                                     ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-600 focus:border-blue-500/50 focus:ring-blue-500/10'
                                     : 'bg-gray-50 border-gray-100 text-gray-900 placeholder:text-gray-300 focus:border-blue-500 focus:ring-blue-500/5 focus:bg-white'

@@ -24,25 +24,35 @@ class PortfolioAnalyzer:
         self.profiler = InvestorProfiler()
         self.screener = StockScreener(self.analyst)
     
+    def _get_exchange_rate(self) -> float:
+        """실시간 USD/KRW 환율 가져오기 (yfinance)"""
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker("USDKRW=X")
+            data = ticker.history(period="1d")
+            if not data.empty:
+                return float(data['Close'].iloc[-1])
+            return 1350.0  # 폴백 값
+        except Exception as e:
+            logger.warning(f"환율 수집 실패: {e}")
+            return 1350.0
+
     def analyze_portfolio(self, 
                          holdings: List[Dict[str, Any]],
                          index_ticker: str = "^GSPC") -> Dict[str, Any]:
         """
-        포트폴리오 종합 분석
-        
-        Args:
-            holdings: 보유 종목 리스트
-                예: [{"ticker": "AAPL", "shares": 10, "avg_price": 150}, ...]
-            index_ticker: 비교 지수
-            
-        Returns:
-            종합 평가 결과
+        포트폴리오 종합 분석 (실시간 환율 반영)
         """
         logger.info(f"포트폴리오 분석 시작: {len(holdings)}개 종목")
         
-        # 1. 각 종목 개별 분석
+        # 실시간 환율 적용
+        USD_KRW = self._get_exchange_rate()
+        logger.info(f"적용 환율: 1 USD = {USD_KRW} KRW")
+        
+        # 1. 각 종목 개별 분석 및 통화 통합
         stock_analyses = []
-        total_value = 0
+        total_value_usd = 0
+        total_cost_usd = 0
         
         for holding in holdings:
             ticker = holding['ticker']
@@ -53,26 +63,39 @@ class PortfolioAnalyzer:
             analysis = self._analyze_holding(ticker, index_ticker)
             if analysis:
                 current_price = analysis['current_price']
-                position_value = shares * current_price
-                total_value += position_value
+                
+                # 통화 판별 (.KS, .KQ면 원화)
+                is_krw = ticker.endswith(('.KS', '.KQ'))
+                
+                pos_value_native = shares * current_price
+                cost_value_native = shares * avg_price
+                
+                # 달러로 통합
+                pos_value_usd = pos_value_native / USD_KRW if is_krw else pos_value_native
+                cost_value_usd = cost_value_native / USD_KRW if is_krw else cost_value_native
+                
+                total_value_usd += pos_value_usd
+                total_cost_usd += cost_value_usd
                 
                 stock_analyses.append({
                     "ticker": ticker,
                     "shares": shares,
                     "avg_price": avg_price,
                     "current_price": current_price,
-                    "position_value": position_value,
+                    "position_value": pos_value_native,
+                    "position_value_usd": pos_value_usd,
                     "profit_loss": (current_price - avg_price) * shares,
                     "profit_loss_pct": ((current_price - avg_price) / avg_price * 100) if avg_price > 0 else 0,
                     "ai_score": analysis['final_score'],
                     "signal": analysis['signal'],
                     "sector": analysis.get('sector', 'Unknown'),
+                    "is_krw": is_krw,
                     "analysis": analysis
                 })
         
-        # 2. 비중 계산
+        # 2. 비중 계산 (달러 가치 기준)
         for stock in stock_analyses:
-            stock['weight'] = (stock['position_value'] / total_value * 100) if total_value > 0 else 0
+            stock['weight'] = (stock['position_value_usd'] / total_value_usd * 100) if total_value_usd > 0 else 0
         
         # 3. 포트폴리오 종합 점수 (가중 평균)
         portfolio_score = sum(s['ai_score'] * s['weight'] / 100 for s in stock_analyses)
@@ -90,15 +113,13 @@ class PortfolioAnalyzer:
         style_alignment = self._evaluate_style_alignment(stock_analyses)
         
         # 8. 리밸런싱 제안 생성
-        rebalancing = self._generate_rebalancing_suggestions(stock_analyses, total_value)
+        rebalancing = self._generate_rebalancing_suggestions(stock_analyses, total_value_usd)
         
         return {
             "portfolio_score": round(portfolio_score, 1),
-            "total_value": total_value,
-            "total_profit_loss": sum(s['profit_loss'] for s in stock_analyses),
-            "total_profit_loss_pct": (sum(s['profit_loss'] for s in stock_analyses) / 
-                                     sum(s['avg_price'] * s['shares'] for s in stock_analyses) * 100) 
-                                     if sum(s['avg_price'] * s['shares'] for s in stock_analyses) > 0 else 0,
+            "total_value": round(total_value_usd, 2),
+            "total_profit_loss": round(total_value_usd - total_cost_usd, 2),
+            "total_profit_loss_pct": round(((total_value_usd - total_cost_usd) / total_cost_usd * 100), 2) if total_cost_usd > 0 else 0,
             "holdings": stock_analyses,
             "correlations": correlations,
             "diversification": diversification,
