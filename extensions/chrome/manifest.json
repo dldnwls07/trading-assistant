@@ -1,0 +1,31 @@
+{
+    "manifest_version": 3,
+    "name": "Antigravity Trading Assistant",
+    "version": "1.0",
+    "description": "AI-Powered Investment Analysis Tool",
+    "permissions": [
+        "contextMenus",
+        "sidePanel",
+        "storage",
+        "activeTab",
+        "scripting"
+    ],
+    "host_permissions": [
+        "http://127.0.0.1:8000/*",
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_title": "Trading Assistant"
+    },
+    "side_panel": {
+        "default_path": "sidepanel.html"
+    },
+    "icons": {
+        "16": "icon.png",
+        "48": "icon.png",
+        "128": "icon.png"
+    }
+}

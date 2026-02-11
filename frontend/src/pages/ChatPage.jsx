@@ -4,13 +4,15 @@ import { Send, Bot, User, Trash2, Sparkles, AlertCircle } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000';
 
-const ChatPage = () => {
+const ChatPage = ({ settings }) => {
     const [messages, setMessages] = useState([
         { id: 1, role: 'assistant', content: '안녕하세요! 저는 AI 투자 어시스턴트입니다. 어떤 종목에 대해 분석해 드릴까요? (예: "삼성전자 전망 어때?", "비트코인 지금 사도 돼?")' }
     ]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [suggestions, setSuggestions] = useState([]);
+
+    const isDark = settings?.darkMode;
 
     // Auto-scroll to bottom
     const messagesEndRef = useRef(null);
@@ -42,10 +44,8 @@ const ChatPage = () => {
         setLoading(true);
 
         try {
-            // 실제 API 연동
             const res = await axios.post(`${API_BASE}/api/chat`, {
                 message: text,
-                // context: { ... } // 필요시 차트 분석 데이터 등을 컨텍스트로 전달 가능
             });
 
             const aiMsg = {
@@ -78,28 +78,28 @@ const ChatPage = () => {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-64px)] bg-gray-50">
+        <div className={`flex flex-col h-[calc(100vh-64px)] transition-colors duration-300 ${isDark ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
             {/* Chat Area */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-                <div className="max-w-3xl mx-auto space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-10 custom-scrollbar">
+                <div className="max-w-4xl mx-auto space-y-8">
                     {messages.map((msg) => (
                         <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`flex max-w-[85%] sm:max-w-[75%] gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                            <div className={`flex max-w-[85%] sm:max-w-[80%] gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
 
                                 {/* Avatar */}
-                                <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white' :
-                                        msg.role === 'system' ? 'bg-red-100 text-red-600' : 'bg-white border border-gray-200 text-blue-600'
+                                <div className={`flex-shrink-0 h-12 w-12 rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-110 ${msg.role === 'user' ? 'bg-blue-600 text-white shadow-blue-500/20' :
+                                    msg.role === 'system' ? 'bg-rose-500 text-white' : (isDark ? 'bg-slate-800 border border-slate-700 text-blue-400' : 'bg-white border border-gray-100 text-blue-600')
                                     }`}>
-                                    {msg.role === 'user' ? <User className="h-5 w-5" /> :
-                                        msg.role === 'system' ? <AlertCircle className="h-5 w-5" /> : <Bot className="h-6 w-6" />}
+                                    {msg.role === 'user' ? <User className="h-6 w-6" /> :
+                                        msg.role === 'system' ? <AlertCircle className="h-6 w-6" /> : <Bot className="h-7 w-7" />}
                                 </div>
 
                                 {/* Bubble */}
-                                <div className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'user'
-                                        ? 'bg-blue-600 text-white rounded-tr-none'
-                                        : msg.role === 'system'
-                                            ? 'bg-red-50 text-red-800 border border-red-100 rounded-tl-none'
-                                            : 'bg-white border border-gray-200 text-gray-800 rounded-tl-none'
+                                <div className={`p-5 rounded-[2rem] shadow-xl text-sm leading-relaxed whitespace-pre-wrap transition-all ${msg.role === 'user'
+                                    ? 'bg-blue-600 text-white rounded-tr-none shadow-blue-500/10'
+                                    : msg.role === 'system'
+                                        ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-tl-none'
+                                        : (isDark ? 'bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none' : 'bg-white border border-gray-100 text-gray-800 rounded-tl-none')
                                     }`}>
                                     {msg.content}
                                 </div>
@@ -109,14 +109,14 @@ const ChatPage = () => {
 
                     {loading && (
                         <div className="flex w-full justify-start">
-                            <div className="flex gap-3">
-                                <div className="h-10 w-10 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-sm">
-                                    <Bot className="h-6 w-6 text-blue-600 animate-pulse" />
+                            <div className="flex gap-4">
+                                <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shadow-lg ${isDark ? 'bg-slate-800 border border-slate-700' : 'bg-white border border-gray-100'}`}>
+                                    <Bot className="h-7 w-7 text-blue-500 animate-pulse" />
                                 </div>
-                                <div className="bg-white border border-gray-200 p-4 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                <div className={`p-5 rounded-[2rem] rounded-tl-none shadow-xl flex items-center gap-2 ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-white border border-gray-100'}`}>
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                                 </div>
                             </div>
                         </div>
@@ -126,8 +126,8 @@ const ChatPage = () => {
             </div>
 
             {/* Input Area */}
-            <div className="bg-white border-t border-gray-200 p-4 sticky bottom-0">
-                <div className="max-w-3xl mx-auto space-y-4">
+            <div className={`p-6 border-t transition-colors ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-gray-200'}`}>
+                <div className="max-w-4xl mx-auto space-y-6">
 
                     {/* Suggestions Chips */}
                     {!loading && suggestions.length > 0 && messages.length < 3 && (
@@ -136,9 +136,10 @@ const ChatPage = () => {
                                 <button
                                     key={idx}
                                     onClick={() => handleSend(s)}
-                                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200 transition-colors flex items-center gap-1"
+                                    className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-full border transition-all flex items-center gap-2 ${isDark ? 'bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border-blue-500/20' : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+                                        }`}
                                 >
-                                    <Sparkles className="w-3 h-3" />
+                                    <Sparkles className="w-3.5 h-3.5" />
                                     {s}
                                 </button>
                             ))}
@@ -146,16 +147,16 @@ const ChatPage = () => {
                     )}
 
                     {/* Input Field */}
-                    <div className="relative flex items-center gap-2">
+                    <div className="relative flex items-end gap-3">
                         <button
                             onClick={clearHistory}
-                            className="p-3 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-full transition-colors"
+                            className={`p-4 rounded-2xl transition-all ${isDark ? 'bg-slate-800 hover:bg-rose-500/10 text-slate-400 hover:text-rose-500' : 'bg-gray-100 hover:bg-rose-50 text-gray-400 hover:text-rose-500'}`}
                             title="Clear Chat"
                         >
                             <Trash2 className="w-5 h-5" />
                         </button>
 
-                        <div className="flex-1 relative">
+                        <div className="flex-1 relative group">
                             <textarea
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
@@ -165,21 +166,25 @@ const ChatPage = () => {
                                         handleSend();
                                     }
                                 }}
-                                placeholder="Ask about stocks, markets, or strategies..."
-                                className="w-full pl-4 pr-12 py-3 bg-gray-100 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all resize-none text-sm max-h-32 min-h-[50px] scrollbar-hide"
+                                placeholder="Analyze market harmonics..."
+                                className={`w-full pl-6 pr-16 py-4 rounded-3xl border-2 transition-all resize-none text-sm max-h-48 min-h-[56px] focus:outline-none focus:ring-4 ${isDark
+                                    ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-600 focus:border-blue-500/50 focus:ring-blue-500/10'
+                                    : 'bg-gray-50 border-gray-100 text-gray-900 placeholder:text-gray-300 focus:border-blue-500 focus:ring-blue-500/5 focus:bg-white'
+                                    }`}
                                 rows={1}
                             />
                             <button
                                 onClick={() => handleSend()}
                                 disabled={loading || !input.trim()}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all shadow-md"
+                                className={`absolute right-2.5 bottom-2.5 p-3 rounded-2xl transition-all shadow-xl disabled:opacity-30 flex items-center gap-2 ${isDark ? 'bg-blue-600 text-white shadow-blue-500/20 hover:bg-blue-500' : 'bg-blue-600 text-white shadow-blue-500/20 hover:bg-blue-700'
+                                    }`}
                             >
                                 <Send className="w-4 h-4" />
                             </button>
                         </div>
                     </div>
                     <div className="text-center">
-                        <p className="text-xs text-gray-400">AI can make mistakes. Consider checking important information.</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-20">AI engine may produce inaccuracies • Quantitative verification recommended</p>
                     </div>
                 </div>
             </div>

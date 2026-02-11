@@ -28,10 +28,21 @@ class ChatAssistant:
                 import google.generativeai as genai
                 genai.configure(api_key=self.gemini_api_key)
                 
-                # Gemini Flash 모델 (무료, 빠름, 똑똑함)
-                self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+                # 사용 가능한 모델 자동 탐색 (404 에러 방지)
+                model_name = 'gemini-pro' # 기본값
+                try:
+                    for m in genai.list_models():
+                        if 'generateContent' in m.supported_generation_methods:
+                            if 'gemini' in m.name:
+                                model_name = m.name
+                                break
+                    logger.info(f"선택된 Gemini 모델: {model_name}")
+                except Exception as e:
+                    logger.warning(f"모델 목록 조회 실패 ({e}), 기본값 사용: {model_name}")
+
+                self.model = genai.GenerativeModel(model_name)
                 self.use_ai = True
-                logger.info("✅ Google Gemini Flash 활성화 (무료 AI 모드)")
+                logger.info("✅ Google Gemini 활성화 (무료 AI 모드)")
             except Exception as e:
                 self.model = None
                 self.use_ai = False
@@ -211,12 +222,15 @@ class ChatAssistant:
     
     def _buy_response(self, context: Optional[Dict]) -> str:
         """매수 판단 응답"""
+        # 컨텍스트가 없으면 일반적인 조언을 하되, 메시지 내에 정보가 있을 수 있으므로 차단하지 않음
         if not context or 'ticker' not in context:
-            return ("종목을 먼저 분석해 주세요!\n\n"
-                    "왼쪽 사이드바에서:\n"
-                    "1. 종목 심볼 입력 (예: AAPL)\n"
-                    "2. '컨텍스트 로드' 클릭")
+            # 혹시 메시지 자체에 분석 요청이 포함되어 있을 수 있으므로 Gemini에게 넘김 (여기서 리턴 X)
+            pass
         
+        if not context or 'analysis' not in context:
+             # Gemini가 처리하도록 유도 (프롬프트 인젝션된 경우)
+             return self._generate_response_with_gemini("매수 관점에서 분석해줘 (데이터는 위 메시지에 있음)", context)
+
         ticker = context['ticker']
         score = context.get('analysis', {}).get('final_score', 50)
         signal = context.get('analysis', {}).get('signal', '중립')
@@ -251,7 +265,7 @@ class ChatAssistant:
     def _sell_response(self, context: Optional[Dict]) -> str:
         """매도 판단 응답"""
         if not context or 'ticker' not in context:
-            return "종목을 먼저 분석해 주세요."
+            return "구체적인 종목 데이터가 없어 매도 판단이 어렵습니다."
         
         ticker = context['ticker']
         score = context.get('analysis', {}).get('final_score', 50)
@@ -282,7 +296,7 @@ class ChatAssistant:
             else:
                 return "📉 **하락 전망**\n부정적 신호가 우세합니다."
         
-        return "구체적인 종목을 분석하면 더 정확한 전망을 드릴 수 있습니다."
+        return "종목 상세 데이터가 확인되지 않아 일반적인 전망만 가능합니다."
     
     def _pattern_response(self, context: Optional[Dict]) -> str:
         """패턴 응답"""
@@ -296,7 +310,7 @@ class ChatAssistant:
             else:
                 return "현재 뚜렷한 차트 패턴이 감지되지 않았습니다."
         
-        return "차트 패턴 분석을 원하시면 종목을 먼저 분석해 주세요."
+        return "종목 데이터가 없어 패턴 분석이 불가능합니다."
     
     def _target_response(self, context: Optional[Dict]) -> str:
         """목표가 응답"""
@@ -310,7 +324,7 @@ class ChatAssistant:
                     response += f"• {p['name']}: **${p['target']:.2f}**\n"
                 return response
         
-        return "목표가를 확인하려면 먼저 종목을 분석해 주세요."
+        return "목표가 산출을 위한 충분한 패턴 데이터가 없습니다."
     
     def _risk_response(self) -> str:
         """리스크 응답"""

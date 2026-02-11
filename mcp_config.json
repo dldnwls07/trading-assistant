@@ -1,0 +1,14 @@
+{
+    "mcpServers": {
+        "trading-assistant": {
+            "command": "python",
+            "args": [
+                "c:\\Users\\feca1\\OneDrive\\바탕 화면\\Trading_asist\\src\\server_mcp.py"
+            ],
+            "env": {
+                "PYTHONPATH": "c:\\Users\\feca1\\OneDrive\\바탕 화면\\Trading_asist"
+            },
+            "description": "Antigravity AI Trading Assistant - Stock Price, Analysis, Portfolio Tools"
+        }
+    }
+}

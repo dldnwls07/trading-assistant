@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, Dict, List, Any
 import logging
@@ -18,6 +19,7 @@ from src.agents.chat_assistant import ChatAssistant
 from src.agents.event_calendar import EventCalendar
 from src.agents.portfolio_analyzer import PortfolioAnalyzer
 from src.agents.screener import StockScreener
+from src.utils.serializer import safe_serialize
 
 # 로깅
 logging.basicConfig(level=logging.INFO)
@@ -117,13 +119,16 @@ def get_final_ticker(ticker: str) -> str:
     
     return ticker
 
-async def run_analysis(ticker: str):
-    """실제 분석 로직 공통 엔진"""
+from src.agents.multi_timeframe import MultiTimeframeAnalyzer
+multi_analyzer = MultiTimeframeAnalyzer()
+
+async def run_analysis(ticker: str, lang: str = "ko"):
+    """실제 분석 로직 공통 엔진 (30+ 정밀 데이터 통합 버전)"""
     # 1. 티커 매핑
     final_ticker = get_final_ticker(ticker)
     logger.info(f"Analyzing mapped ticker: {final_ticker} (Input: {ticker})")
     
-    # 종목명 가져오기 (yf.Ticker 사용)
+    # 종목 정보 가져오기
     import yfinance as yf
     display_name = final_ticker
     try:
@@ -134,34 +139,39 @@ async def run_analysis(ticker: str):
     except:
         pass
 
-    # 2. 데이터 수집
-    daily_df = collector.get_ohlcv(final_ticker, period="1y", interval="1d")
-    hourly_df = collector.get_ohlcv(final_ticker, period="60d", interval="60m")
+    # 2. 다중 시간 프레임 분석 (30+ 데이터 포인트 자동 생성)
+    # 한국 주식은 KOSPI(^KS11), 미국 주식은 S&P 500(^GSPC) 기준
+    index_symbol = "^KS11" if final_ticker.endswith(('.KS', '.KQ')) else "^GSPC"
+    multi_res = multi_analyzer.analyze_all_timeframes(final_ticker, index_ticker=index_symbol)
     
-    if daily_df is None or daily_df.empty:
-        raise HTTPException(status_code=404, detail=f"[{final_ticker}] 데이터를 찾을 수 없습니다.")
-        
-    # 3. 재무 데이터 수집
+    # 3. 추가 데이터 (재무, 이벤트)
     financials = storage.get_financials(final_ticker)
     if not financials:
         parser.fetch_and_save_financials(final_ticker)
         financials = storage.get_financials(final_ticker)
-        
-    # 4. 종합 스마트 분석 실행
-    analysis_result = analyst.analyze_ticker(final_ticker, daily_df, financials, hourly_df)
-    analysis_result['display_name'] = display_name
-    
-    # 5. 이벤트 정보 추가
     events = get_stock_events(final_ticker)
-    analysis_result['events'] = events
     
-    return safe_serialize(analysis_result)
+    # 4. 종합 데이터 병합
+    full_data = {
+        **multi_res,
+        "display_name": display_name,
+        "fundamental": analyst.fund.analyze(financials) if financials else {"score": 50, "summary": "재무 정보 없음"},
+        "events": events,
+        "final_score": multi_res.get("consensus", {}).get("avg_score", 50),
+        "signal": multi_res.get("consensus", {}).get("consensus", "중립")
+    }
+
+    # 5. AI 수석 분석가 리포트 생성 (30+ 데이터 기반 판단)
+    full_data['full_report'] = ai_analyzer.generate_report(full_data, lang=lang)
+    
+    return safe_serialize(full_data)
 
 @app.post("/analyze")
 async def analyze_post(req: AnalysisRequest):
     """POST 방식 분석 엔드포인트"""
     try:
-        return await run_analysis(req.ticker)
+        result = await run_analysis(req.ticker)
+        return JSONResponse(content=result)
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -172,7 +182,8 @@ async def analyze_post(req: AnalysisRequest):
 async def analyze_get(ticker: str):
     """GET 방식 분석 엔드포인트 (기존 호환성)"""
     try:
-        return await run_analysis(ticker)
+        result = await run_analysis(ticker)
+        return JSONResponse(content=result)
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -222,67 +233,74 @@ async def get_history(ticker: str, interval: str = "1d"):
         if df is None or df.empty:
             return {"ticker": final_ticker, "data": []}
             
-        # 기술적 지표 계산 (TechnicalAnalyzer 활용)
-        from src.agents.analyst import TechnicalAnalyzer
-        ta = TechnicalAnalyzer()
+        # === 전문가급 기술적 지표 계산 (30개 이상) ===
+        from src.utils.advanced_indicators import AdvancedIndicators
         
-        # 지표 추가를 위한 데이터프레임 복사 및 연산
+        # 지표 추가를 위한 데이터프레임 복사
         calc_df = df.copy()
         if 'Date' in calc_df.columns:
             calc_df.set_index(pd.to_datetime(calc_df['Date']), inplace=True)
         
-        # 이동평균선
-        calc_df['sma20'] = calc_df['Close'].rolling(window=20).mean()
-        calc_df['sma50'] = calc_df['Close'].rolling(window=50).mean()
-        calc_df['sma200'] = calc_df['Close'].rolling(window=200).mean()
-        
-        # RSI
-        calc_df['rsi'] = ta.calculate_rsi(calc_df)
-        
-        # MACD
-        macd_df = ta.calculate_macd(calc_df)
-        calc_df = calc_df.join(macd_df)
-        
-        # 볼린저 밴드
-        bb_df = ta.calculate_bollinger(calc_df)
-        calc_df = calc_df.join(bb_df)
+        # 모든 지표 한 번에 계산
+        calc_df = AdvancedIndicators.calculate_all(calc_df)
 
-        # 인덱스를 Datetime으로 확실히 변환 (정렬 및 시간 추출을 위해)
+        # 인덱스를 Datetime으로 확실히 변환
         if not isinstance(calc_df.index, pd.DatetimeIndex):
             calc_df.index = pd.to_datetime(calc_df.index)
         
-        # NaT 인덱스 제거
         calc_df = calc_df[calc_df.index.notnull()]
-        
-        # JSON 직렬화를 위해 오름차순 정렬 보장
         calc_df.sort_index(inplace=True)
         
         history = []
         for idx, row in calc_df.iterrows():
-            # 인덱스가 날짜이므로 직접 변환
             try:
                 time_val = idx.strftime('%Y-%m-%d %H:%M:%S' if actual_interval != '1d' else '%Y-%m-%d')
             except:
                 time_val = str(idx)
 
-            history.append({
+            # 기본 OHLCV 데이터
+            data_point = {
                 "time": time_val,
                 "open": float(row["Open"]),
                 "high": float(row["High"]),
                 "low": float(row["Low"]),
                 "close": float(row["Close"]),
                 "volume": float(row["Volume"]),
-                # 지표 데이터 추가 (NaN 처리 포함)
-                "sma20": float(row["sma20"]) if not pd.isna(row["sma20"]) else None,
-                "sma50": float(row["sma50"]) if not pd.isna(row["sma50"]) else None,
-                "sma200": float(row["sma200"]) if not pd.isna(row["sma200"]) else None,
-                "rsi": float(row["rsi"]) if not pd.isna(row["rsi"]) else None,
-                "macd": float(row["MACD"]) if not pd.isna(row["MACD"]) else None,
-                "macd_signal": float(row["Signal"]) if not pd.isna(row["Signal"]) else None,
-                "macd_hist": float(row["Hist"]) if not pd.isna(row["Hist"]) else None,
-                "bb_upper": float(row["BB_Upper"]) if not pd.isna(row["BB_Upper"]) else None,
-                "bb_lower": float(row["BB_Lower"]) if not pd.isna(row["BB_Lower"]) else None,
-            })
+            }
+            
+            # === 모든 지표 추가 (NaN 안전 처리) ===
+            all_indicators = [
+                'sma_5', 'sma_10', 'sma_20', 'sma_50', 'sma_60', 'sma_100', 'sma_120', 'sma_200',
+                'ema_9', 'ema_12', 'ema_20', 'ema_26', 'ema_50', 'ema_200',
+                'bb_upper', 'bb_middle', 'bb_lower', 'bb_width',
+                'kc_upper', 'kc_middle', 'kc_lower',
+                'dc_upper', 'dc_middle', 'dc_lower',
+                'ichimoku_tenkan', 'ichimoku_kijun', 'ichimoku_senkou_a', 'ichimoku_senkou_b',
+                'rsi', 'rsi_9', 'rsi_25',
+                'MACD', 'Signal', 'Hist',
+                'stoch_k', 'stoch_d',
+                'cci', 'williams_r',
+                'adx', 'plus_di', 'minus_di',
+                'obv', 'mfi', 'vwap', 'cmf',
+                'roc', 'momentum',
+                'aroon_up', 'aroon_down', 'aroon_osc',
+                'tsi', 'uo', 'atr'
+            ]
+            
+            for indicator in all_indicators:
+                if indicator in row.index:
+                    val = row[indicator]
+                    # MACD 계열은 소문자로 변환
+                    key = indicator.lower() if indicator in ['MACD', 'Signal', 'Hist'] else indicator
+                    if indicator == 'Signal':
+                        key = 'macd_signal'
+                    elif indicator == 'Hist':
+                        key = 'macd_hist'
+                    elif indicator == 'MACD':
+                        key = 'macd'
+                    data_point[key] = float(val) if not pd.isna(val) else None
+            
+            history.append(data_point)
             
         return safe_serialize({"ticker": final_ticker, "interval": interval, "data": history})
     except Exception as e:
@@ -324,18 +342,28 @@ async def search_ticker(query: str):
         logger.error(f"Search error: {e}")
         return {"query": query, "candidates": []}
 
+import numpy as np
+
 def safe_serialize(data):
-    """JSON 직렬화 불가능한 객체(NaN, Timestamp 등) 처리"""
+    """JSON 직렬화 불가능한 객체(NaN, Timestamp, Numpy 등) 처리"""
     if isinstance(data, dict):
         return {k: safe_serialize(v) for k, v in data.items()}
     elif isinstance(data, list):
         return [safe_serialize(v) for v in data]
     elif isinstance(data, (pd.Timestamp, pd.Period)):
         return str(data)
-    elif pd.isna(data):  # NaN -> None
+    elif pd.isna(data):  # NaN, NaT -> None
         return None
     elif isinstance(data, (pd.Series, pd.DataFrame)):
-        return data.to_dict()
+        return data.where(pd.notnull(data), None).to_dict() # NaN 처리 포함
+    elif isinstance(data, (np.integer, np.int64)):
+        return int(data)
+    elif isinstance(data, (np.floating, np.float64)):
+        return float(data) if not np.isnan(data) else None
+    elif isinstance(data, np.ndarray):
+        return data.tolist()
+    elif isinstance(data, (np.bool_, bool)):
+        return bool(data)
     else:
         return data
 
@@ -512,6 +540,25 @@ async def multi_timeframe_analysis(ticker: str):
         })
     except Exception as e:
         logger.error(f"Multi-timeframe error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === 포트폴리오 분석 ===
+class PortfolioRequest(BaseModel):
+    holdings: List[Dict[str, Any]]
+
+@app.post("/api/portfolio/analyze")
+async def analyze_portfolio_endpoint(req: PortfolioRequest):
+    """
+    포트폴리오 종합 분석
+    - 다각화 점수
+    - 상관관계 매트릭스
+    - 리밸런싱 제안
+    """
+    try:
+        result = portfolio_analyzer.analyze_portfolio(req.holdings)
+        return JSONResponse(content=safe_serialize(result))
+    except Exception as e:
+        logger.error(f"Portfolio analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # === 헬스 체크 ===

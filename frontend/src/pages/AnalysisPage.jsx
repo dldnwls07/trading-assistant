@@ -2,14 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StockChart } from '../components/StockChart';
+import SettingsModal from '../components/SettingsModal';
 import {
     Search,
     Zap,
     Activity,
-    Maximize2,
-    Minimize2,
     Settings,
-    Star
+    Star,
+    TrendingUp,
+    Clock,
+    BarChart3,
+    Eye,
+    ChevronRight,
+    MessageSquare
 } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000';
@@ -18,40 +23,25 @@ const INTERVALS = [
     { label: '1m', value: '1m' },
     { label: '5m', value: '5m' },
     { label: '15m', value: '15m' },
-    { label: '30m', value: '30m' },
     { label: '1h', value: '60m' },
-    { label: '4h', value: '4h' },
     { label: '1D', value: '1d' },
     { label: '1W', value: '1wk' },
-    { label: '1M', value: '1mo' },
 ];
 
-const AnalysisPage = () => {
-    const [ticker, setTicker] = useState(''); // Default Ticker removed
+const AnalysisPage = ({ settings }) => {
+    const [ticker, setTicker] = useState('005930');
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [analysis, setAnalysis] = useState(null);
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
     const [selectedInterval, setSelectedInterval] = useState('1d');
-    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [selectedView, setSelectedView] = useState('short'); // short, medium, long
+    const [isReportOpen, setIsReportOpen] = useState(false);
 
-    // 차트 옵션 (기본값)
-    const [chartOptions, setChartOptions] = useState({
-        showVolume: true,
-        showGrid: true,
-        showSMA: true,
-        showBB: true,
-        showRSI: true,
-        showMACD: true,
-        showAIQuotes: true,
-        themeColor: '#2563eb' // Blue-600
-    });
+    const isDark = settings?.darkMode;
 
-    const searchRef = useRef(null);
-
-    // 검색어 추천
+    // 검색어 추천 로직
     useEffect(() => {
         const fetchSuggestions = async () => {
             if (ticker.length < 1) {
@@ -61,285 +51,341 @@ const AnalysisPage = () => {
             try {
                 const res = await axios.get(`${API_BASE}/search?query=${encodeURIComponent(ticker)}`);
                 setSuggestions(res.data.candidates || []);
-            } catch (err) {
-                console.error("Suggestion fetch failed", err);
-            }
+            } catch (err) { console.error(err); }
         };
-        const timeoutId = setTimeout(fetchSuggestions, 300);
-        return () => clearTimeout(timeoutId);
+        const tid = setTimeout(fetchSuggestions, 300);
+        return () => clearTimeout(tid);
     }, [ticker]);
-
-    // 히스토리 업데이트
-    useEffect(() => {
-        if (analysis?.ticker) {
-            updateHistory(analysis.ticker, selectedInterval);
-        }
-    }, [selectedInterval]);
-
-    // 초기 로드 시 분석 실행
-    useEffect(() => {
-        if (ticker) handleSearch(ticker);
-    }, []);
-
-    const updateHistory = async (symbol, interval) => {
-        try {
-            const res = await axios.get(`${API_BASE}/history/${encodeURIComponent(symbol)}?interval=${interval}`);
-            if (res.data && Array.isArray(res.data.data)) {
-                setHistory(res.data.data);
-            }
-        } catch (err) {
-            console.error("History fetch failed", err);
-        }
-    };
 
     const handleSearch = async (s) => {
         const sym = s || ticker;
         if (!sym) return;
-
         setLoading(true);
-        setError(null);
-        // setAnalysis(null); // 기존 데이터 유지하면서 로딩 표시
         setShowSuggestions(false);
 
         try {
-            // 병렬 처리로 속도 개선
             const [analReq, histReq] = await Promise.allSettled([
-                axios.get(`${API_BASE}/analyze/${sym}`), // GET 방식으로 변경 (캐싱 등 이점)
+                axios.get(`${API_BASE}/analyze/${sym}?lang=${settings.language}`),
                 axios.get(`${API_BASE}/history/${encodeURIComponent(sym)}?interval=${selectedInterval}`)
             ]);
 
             if (analReq.status === 'fulfilled') {
                 setAnalysis(analReq.value.data);
-                // 검색창 티커도 업데이트 (심볼 대문자화 등)
                 setTicker(analReq.value.data.ticker);
-            } else {
-                throw new Error(analReq.reason?.response?.data?.detail || "Analysis failed");
             }
-
-            if (histReq.status === 'fulfilled' && histReq.value.data && Array.isArray(histReq.value.data.data)) {
-                setHistory(histReq.value.data.data);
-            }
-
-        } catch (err) {
-            setError(err.message || "An error occurred");
-        } finally {
-            setLoading(false);
-        }
+            if (histReq.status === 'fulfilled') setHistory(histReq.value.data.data);
+        } catch (err) { console.error(err); } finally { setLoading(false); }
     };
 
-    // UI Helpers
-    const getSignalColor = (signal) => {
-        if (!signal) return 'bg-gray-100 text-gray-800';
-        if (signal.includes('BUY')) return 'bg-green-100 text-green-800 border-green-200';
-        if (signal.includes('SELL')) return 'bg-red-100 text-red-800 border-red-200';
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    };
+    // 초기 검색
+    useEffect(() => { handleSearch(); }, []);
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-12 font-sans text-gray-900">
-            {/* Header / Search Area */}
-            <div className="bg-white border-b border-gray-200 py-6 mb-8 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className={`min-h-screen pb-12 transition-colors duration-300 ${isDark ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
 
-                        {/* Ticker Info */}
-                        <div className="flex items-center gap-4">
-                            <div className="h-12 w-12 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
-                                {analysis?.ticker ? analysis.ticker.substring(0, 2) : "QC"}
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-bold text-gray-900">
-                                    {analysis?.display_name || "Enter a Symbol"}
-                                </h1>
-                                <div className="flex items-center gap-2 text-sm text-gray-500">
-                                    <span className="font-medium bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600">
-                                        {analysis?.ticker}
-                                    </span>
-                                    <span>•</span>
-                                    <span className="flex items-center gap-1">
-                                        Scan Time: {new Date().toLocaleTimeString()}
-                                    </span>
+            {/* Full Report Modal */}
+            <AnimatePresence>
+                {isReportOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className={`w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-3xl shadow-2xl flex flex-col ${isDark ? 'bg-slate-900 text-slate-100 border border-slate-800' : 'bg-white text-gray-900'}`}
+                        >
+                            <div className={`p-6 border-b flex items-center justify-between ${isDark ? 'border-slate-800' : 'border-gray-100'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-blue-600 p-2 rounded-xl text-white">
+                                        <Eye className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-black">AI Detail Analysis Report</h2>
+                                        <p className="text-xs opacity-50">{analysis?.display_name} ({analysis?.ticker})</p>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-
-                        {/* Search Bar */}
-                        <div className="relative w-full md:w-96" ref={searchRef}>
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    value={ticker}
-                                    onChange={(e) => { setTicker(e.target.value.toUpperCase()); setShowSuggestions(true); }}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                    placeholder="Search Ticker (e.g. TSLA)"
-                                    className="block w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm shadow-sm transition-all"
-                                />
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <Search className="h-5 w-5 text-gray-400" />
-                                </div>
-                                <button
-                                    onClick={() => handleSearch()}
-                                    className="absolute inset-y-0 right-0 px-4 flex items-center bg-blue-600 hover:bg-blue-700 text-white rounded-r-lg font-medium text-sm transition-colors"
-                                >
-                                    {loading ? <Activity className="w-4 h-4 animate-spin" /> : "GO"}
+                                <button onClick={() => setIsReportOpen(false)} className={`p-2 rounded-full hover:bg-opacity-10 transition-colors ${isDark ? 'hover:bg-white' : 'hover:bg-black'}`}>
+                                    <span className="text-2xl leading-none">&times;</span>
                                 </button>
                             </div>
+                            <div className="p-8 overflow-y-auto custom-scrollbar">
+                                <div className={`prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''}`}>
+                                    <div className="whitespace-pre-wrap leading-relaxed font-medium opacity-90 text-base">
+                                        {analysis?.full_report || "리포트를 불러오는 중..."}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className={`p-4 border-t text-center text-[11px] opacity-40 ${isDark ? 'border-slate-800' : 'border-gray-100'}`}>
+                                This analysis is generated by QuantCore AI Engine and should be used for reference only.
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
-                            {/* Suggestions Dropdown */}
-                            <AnimatePresence>
-                                {showSuggestions && suggestions.length > 0 && (
-                                    <motion.ul
-                                        initial={{ opacity: 0, y: -10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -10 }}
-                                        className="absolute z-50 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm"
-                                    >
-                                        {suggestions.map((s, idx) => (
-                                            <li
-                                                key={idx}
-                                                onClick={() => { setTicker(s.symbol); handleSearch(s.symbol); }}
-                                                className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-gray-100 transition-colors"
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <span className="font-bold text-gray-900">{s.symbol}</span>
-                                                    <span className="text-gray-500 text-xs truncate ml-2">{s.shortname}</span>
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </motion.ul>
-                                )}
-                            </AnimatePresence>
+            {/* Header / Search Area */}
+            <div className={`border-b py-8 mb-8 shadow-sm transition-colors duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+                <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex items-center gap-5">
+                        <div className="h-14 w-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-black text-2xl shadow-xl shadow-blue-500/30">
+                            {analysis?.ticker?.substring(0, 2) || "AN"}
                         </div>
+                        <div>
+                            <div className="flex items-center gap-2 mb-0.5">
+                                <h1 className="text-3xl font-black tracking-tight">{analysis?.display_name || "Stock Assistant"}</h1>
+                                {analysis?.ticker && <span className="text-xs font-black bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-full">{analysis?.ticker}</span>}
+                            </div>
+                            <div className="flex items-center gap-2 text-sm opacity-50 font-medium">
+                                <Clock className="w-3.5 h-3.5" />
+                                <span>KRW • {new Date().toLocaleTimeString()} • Live Analysis</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="relative w-full md:w-[450px]">
+                        <div className={`flex items-center px-4 py-3.5 rounded-2xl border transition-all duration-300 group ${isDark ? 'bg-slate-800 border-slate-700 focus-within:border-blue-500/50 focus-within:ring-4 focus-within:ring-blue-500/10' : 'bg-gray-50 border-gray-200 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10'}`}>
+                            <Search className={`h-5 w-5 mr-3 transition-colors ${isDark ? 'text-slate-500 group-focus-within:text-blue-400' : 'text-gray-400 group-focus-within:text-blue-500'}`} />
+                            <input
+                                type="text"
+                                value={ticker}
+                                onChange={(e) => { setTicker(e.target.value.toUpperCase()); setShowSuggestions(true); }}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                                placeholder="Search Symbol (e.g. AAPL, TSLA, 005930)..."
+                                className="w-full bg-transparent border-none outline-none font-bold placeholder:text-gray-400"
+                            />
+                            {loading && <div className="ml-2 h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>}
+                        </div>
+
+                        {/* Search Suggestions */}
+                        <AnimatePresence>
+                            {showSuggestions && suggestions.length > 0 && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 10 }}
+                                    className={`absolute left-0 right-0 mt-2 rounded-2xl shadow-2xl z-50 border overflow-hidden ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-gray-100'}`}
+                                >
+                                    {suggestions.map((s, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => { setTicker(s.symbol); handleSearch(s.symbol); }}
+                                            className={`w-full px-5 py-3.5 text-left flex items-center justify-between hover:bg-blue-500 hover:text-white transition-colors border-b last:border-0 ${isDark ? 'border-slate-700' : 'border-gray-50'}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-black text-sm">{s.symbol}</span>
+                                                <span className="text-xs opacity-70 font-medium">{s.name}</span>
+                                            </div>
+                                            <ChevronRight className="w-4 h-4 opacity-30" />
+                                        </button>
+                                    ))}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
                 </div>
             </div>
 
-            {/* Main Content */}
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-
-                {/* 1. Score & Signal Cards (Top Row) */}
+            <main className="max-w-7xl mx-auto px-4 space-y-8">
+                {/* 1. Dashboard Row */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    {/* Score Card */}
-                    <div className="bg-white overflow-hidden shadow rounded-lg border border-gray-200 p-5 flex flex-col items-center justify-center text-center">
-                        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">AI Confidence Score</h3>
-                        <div className="relative flex items-center justify-center">
-                            <svg className="w-24 h-24 transform -rotate-90">
-                                <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-gray-200" />
-                                <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={251.2} strokeDashoffset={251.2 - (251.2 * (analysis?.final_score || 0)) / 100} className={`transition-all duration-1000 ease-out ${analysis?.final_score >= 70 ? 'text-green-500' : analysis?.final_score >= 40 ? 'text-yellow-500' : 'text-red-500'}`} />
-                            </svg>
-                            <span className="absolute text-3xl font-bold text-gray-800">{analysis?.final_score ?? '--'}</span>
+                    <div className={`p-8 rounded-3xl border shadow-xl flex flex-col items-center justify-center relative overflow-hidden transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+                        <div className="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
+                        <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2 px-3 py-1 bg-blue-500/5 rounded-full">AI Confidence Score</span>
+                        <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-blue-400 to-blue-600 drop-shadow-sm">{analysis?.final_score || '--'}</div>
+                    </div>
+                    <div className={`p-8 rounded-3xl border shadow-xl flex flex-col items-center justify-center transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Engine Signal</span>
+                        <div className={`text-xl font-black px-6 py-2 rounded-2xl border-2 italic shadow-sm ${analysis?.signal?.includes('매수') ? 'bg-green-500/10 text-green-500 border-green-500/20' : analysis?.signal?.includes('매도') ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-blue-500/5 text-blue-500 border-blue-500/10'}`}>
+                            {analysis?.signal || 'Thinking...'}
                         </div>
                     </div>
-
-                    {/* Signal Card */}
-                    <div className="bg-white overflow-hidden shadow rounded-lg border border-gray-200 p-5 flex flex-col items-center justify-center">
-                        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Trading Signal</h3>
-                        <span className={`px-6 py-2 rounded-full text-lg font-bold border ${getSignalColor(analysis?.signal)} shadow-sm`}>
-                            {analysis?.signal || 'WAITING...'}
-                        </span>
-                        <p className="mt-3 text-xs text-gray-400">Based on multi-factor analysis</p>
-                    </div>
-
-                    {/* Target Price Card */}
-                    <div className="md:col-span-2 bg-white overflow-hidden shadow rounded-lg border border-gray-200 p-5">
-                        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Tactical Price Targets</h3>
-                        <div className="grid grid-cols-3 gap-4 text-center h-full items-center">
-                            <div>
-                                <p className="text-xs text-gray-400 mb-1">Defense (Stop)</p>
-                                <p className="text-xl font-bold text-red-600">{analysis?.entry_points?.stop || '--'}</p>
+                    <div className={`md:col-span-2 p-8 rounded-3xl border shadow-xl transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+                        <div className="flex justify-between items-center mb-6">
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Target Trading Zones</span>
+                            <div className="flex items-center gap-1.5 opacity-30">
+                                <Star className="w-3.5 h-3.5 fill-current" />
+                                <span className="text-[10px] font-black uppercase">Alpha Strategy</span>
                             </div>
-                            <div className="border-x border-gray-100 px-2">
-                                <p className="text-xs text-blue-500 font-bold mb-1">Entry Zone</p>
-                                <p className="text-2xl font-black text-gray-900">{analysis?.entry_points?.buy || '--'}</p>
+                        </div>
+                        <div className="flex justify-around items-center">
+                            <div className="text-center group">
+                                <p className="text-[10px] text-rose-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">Stop Loss</p>
+                                <p className="text-xl font-black opacity-90">
+                                    {analysis?.[`${selectedView}_term`]?.entry_points?.stop_loss?.toLocaleString() || '--'}
+                                </p>
                             </div>
-                            <div>
-                                <p className="text-xs text-gray-400 mb-1">Target (Exit)</p>
-                                <p className="text-xl font-bold text-green-600">{analysis?.entry_points?.target || '--'}</p>
+                            <div className={`h-12 w-px ${isDark ? 'bg-slate-800' : 'bg-gray-100'}`} />
+                            <div className="text-center group">
+                                <p className="text-[10px] text-blue-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">Entry Zone</p>
+                                <p className="text-3xl font-black text-blue-600 shadow-blue-500/10 drop-shadow-sm">
+                                    {analysis?.[`${selectedView}_term`]?.entry_points?.buy_zone?.[0]?.price?.toLocaleString() || '--'}
+                                </p>
+                            </div>
+                            <div className={`h-12 w-px ${isDark ? 'bg-slate-800' : 'bg-gray-100'}`} />
+                            <div className="text-center group">
+                                <p className="text-[10px] text-emerald-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">Take Profit</p>
+                                <p className="text-xl font-black opacity-90">
+                                    {analysis?.[`${selectedView}_term`]?.entry_points?.take_profit?.toLocaleString() || '--'}
+                                </p>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* 2. Chart Section */}
-                <div className="bg-white shadow rounded-lg border border-gray-200 overflow-hidden">
-                    {/* Toolbar */}
-                    <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 sm:px-6 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex space-x-1">
+                <div className={`rounded-3xl border shadow-2xl overflow-hidden transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+                    {/* Control Bar */}
+                    <div className={`p-4 flex items-center justify-between gap-4 flex-wrap border-b ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-gray-50/50 border-gray-100'}`}>
+                        <div className={`flex bg-black/5 p-1 rounded-2xl ${isDark ? 'bg-white/5' : ''}`}>
                             {INTERVALS.map((int) => (
                                 <button
                                     key={int.value}
-                                    onClick={() => setSelectedInterval(int.value)}
-                                    className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${selectedInterval === int.value ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
+                                    onClick={() => { setSelectedInterval(int.value); handleSearch(); }}
+                                    className={`px-4 py-1.5 rounded-xl text-[11px] font-black transition-all ${selectedInterval === int.value ? (isDark ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-slate-800 text-white shadow-lg') : 'text-gray-500 hover:text-gray-900'}`}
                                 >
                                     {int.label}
                                 </button>
                             ))}
                         </div>
-                        <div className="flex items-center space-x-2">
-                            <button className="p-1.5 rounded hover:bg-gray-200 text-gray-500" title="Chart Settings" onClick={() => { /* Toggle Settings */ }}>
-                                <Settings className="w-4 h-4" />
-                            </button>
-                            <div className="h-4 w-px bg-gray-300 mx-2"></div>
-                            <span className="text-xs font-medium text-blue-600 flex items-center gap-1">
-                                <Zap className="w-3 h-3 fill-current" /> AI Patterns On
-                            </span>
+
+                        {/* Hidden setting logic moved to Navigation, so here we provide local status display or simple chart toggles if needed */}
+                        <div className="hidden lg:flex items-center gap-2">
+                            <div className={`h-8 w-px mx-4 ${isDark ? 'bg-slate-800' : 'bg-gray-200'}`} />
+                            <span className="text-[10px] font-black text-gray-400 uppercase mr-2">Chart Render</span>
+                            <div className="flex gap-1">
+                                {['Line', 'Candle', 'Area'].map(t => (
+                                    <button key={t} className={`px-3 py-1 rounded-full text-[10px] font-black border transition-all ${t === 'Candle' ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-200 opacity-50'}`}>{t}</button>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
-                    {/* Chart Container */}
-                    <div className="relative h-[600px] w-full bg-[#131722]">
+                    <div className="h-[550px] w-full bg-[#131722] relative">
+                        {loading && (
+                            <div className="absolute inset-0 z-10 bg-black/20 backdrop-blur-[2px] flex items-center justify-center">
+                                <Activity className="w-12 h-12 text-blue-500 animate-spin" />
+                            </div>
+                        )}
                         {history.length > 0 ? (
-                            <StockChart
-                                data={history}
-                                interval={selectedInterval}
-                                options={chartOptions}
-                                analysis={analysis}
-                            />
+                            <StockChart data={history} interval={selectedInterval} options={settings} analysis={analysis} />
                         ) : (
-                            <div className="flex items-center justify-center h-full text-gray-500">
-                                {loading ? "Loading Market Data..." : "No Data Available"}
+                            <div className="h-full flex flex-col items-center justify-center text-gray-500 gap-4">
+                                <Activity className="w-12 h-12 animate-pulse text-blue-500" />
+                                <p className="font-black text-sm uppercase tracking-widest opacity-40 italic">Decoding Market Frequency...</p>
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* 3. Detailed Report */}
-                <div className="bg-white shadow rounded-lg border border-gray-200 p-6">
-                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Activity className="w-5 h-5 text-blue-600" />
-                        Strategic Analysis Report
-                    </h3>
-                    <div className="prose prose-blue max-w-none text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
-                        {analysis?.full_report || "Select a stock to generate a comprehensive AI report."}
-                    </div>
-                </div>
-
-                {/* 4. Pattern Recognition List */}
-                {analysis?.daily_analysis?.patterns?.length > 0 && (
-                    <div className="bg-white shadow rounded-lg border border-gray-200 p-6">
-                        <h3 className="text-lg font-bold text-gray-900 mb-4">Detected Chart Patterns</h3>
-                        <div className="overflow-hidden">
-                            <ul className="divide-y divide-gray-200">
-                                {analysis.daily_analysis.patterns.map((p, idx) => (
-                                    <li key={idx} className="py-4 flex items-start space-x-4">
-                                        <div className="flex-shrink-0">
-                                            <span className={`inline-flex items-center justify-center h-8 w-8 rounded-full ${p.reliability >= 4 ? 'bg-green-100' : 'bg-yellow-100'}`}>
-                                                <Star className={`h-5 w-5 ${p.reliability >= 4 ? 'text-green-600' : 'text-yellow-600'}`} />
-                                            </span>
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
-                                            <p className="text-xs text-gray-500 mt-1">{p.desc}</p>
-                                        </div>
-                                        <div className="inline-flex items-center shadow-sm px-2.5 py-0.5 border border-gray-300 text-xs font-medium rounded-full text-gray-700 bg-white">
-                                            Reliability: {p.reliability}/5
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
+                {/* 3. Multi-View Analysis Report */}
+                <div className={`rounded-3xl border shadow-2xl p-8 mb-12 transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+                    <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4 text-center md:text-left">
+                        <h3 className="text-2xl font-black flex items-center gap-3">
+                            <BarChart3 className="w-7 h-7 text-blue-500" />
+                            AI Insight Engine 4.0
+                        </h3>
+                        <div className={`flex p-1.5 rounded-2xl ${isDark ? 'bg-slate-800' : 'bg-gray-100'}`}>
+                            {[
+                                { id: 'short', label: '단기 (1개월)', interval: '60m' },
+                                { id: 'medium', label: '중기 (6개월)', interval: '1d' },
+                                { id: 'long', label: '장기 (1년+)', interval: '1wk' }
+                            ].map((v) => (
+                                <button
+                                    key={v.id}
+                                    onClick={() => {
+                                        setSelectedView(v.id);
+                                        setSelectedInterval(v.interval);
+                                        // 인터벌 변경 후 즉시 검색 실행을 위해 핸들러 직접 호출
+                                        const fetchUpdatedData = async () => {
+                                            setLoading(true);
+                                            try {
+                                                const res = await axios.get(`${API_BASE}/history/${encodeURIComponent(ticker)}?interval=${v.interval}`);
+                                                setHistory(res.data.data);
+                                            } catch (err) { console.error(err); } finally { setLoading(false); }
+                                        };
+                                        fetchUpdatedData();
+                                    }}
+                                    className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${selectedView === v.id ? (isDark ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20' : 'bg-white text-blue-600 shadow-md') : 'text-gray-400 hover:text-gray-600'}`}
+                                >
+                                    {v.label}
+                                </button>
+                            ))}
                         </div>
                     </div>
-                )}
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                        <div className="lg:col-span-2 space-y-6">
+                            <div className={`p-8 rounded-3xl border-l-[6px] border-blue-600 relative overflow-hidden ${isDark ? 'bg-slate-800/50' : 'bg-blue-50/30'}`}>
+                                <div className="absolute top-4 right-6 opacity-5">
+                                    <Zap className="w-24 h-24 fill-current" />
+                                </div>
+                                <p className="text-xl font-black mb-4 flex items-center gap-2">
+                                    <MessageSquare className="w-5 h-5 text-blue-500" />
+                                    Quantitative Summary
+                                </p>
+                                <div className="text-base leading-relaxed whitespace-pre-wrap opacity-90 font-medium tracking-tight mb-6">
+                                    {analysis?.full_report || "Analyzing real-time harmonics and structural shifts..."}
+                                </div>
+
+                                <div className={`p-5 rounded-2xl border ${isDark ? 'bg-blue-500/5 border-blue-500/20' : 'bg-blue-50 border-blue-100'}`}>
+                                    <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2">Selected Timeframe Strategy</p>
+                                    <p className="text-sm font-bold leading-relaxed whitespace-pre-wrap">
+                                        {analysis?.[`${selectedView}_term`]?.recommendation || "Generating strategic alignment..."}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 font-black">
+                                <div className={`p-5 rounded-2xl border border-dashed transition-all hover:border-blue-500/50 ${isDark ? 'border-slate-700 bg-slate-800/20' : 'border-gray-200 bg-gray-50/50'}`}>
+                                    <p className="text-[10px] text-gray-400 mb-2 uppercase tracking-widest flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                                        Technical Paradigm
+                                    </p>
+                                    <p className="text-sm opacity-80">{analysis?.[`${selectedView}_term`]?.focus_areas || "Calculating structural bias..."}</p>
+                                </div>
+                                <div className={`p-5 rounded-2xl border border-dashed transition-all hover:border-emerald-500/50 ${isDark ? 'border-slate-700 bg-slate-800/20' : 'border-gray-200 bg-gray-50/50'}`}>
+                                    <p className="text-[10px] text-gray-400 mb-2 uppercase tracking-widest flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                        Optimized Horizon
+                                    </p>
+                                    <p className="text-sm opacity-80">{analysis?.[`${selectedView}_term`]?.holding_period || "Estimating time decay..."}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className={`p-6 rounded-3xl shadow-2xl relative overflow-hidden transition-all duration-500 group ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-gray-900 text-white'}`}>
+                                <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl group-hover:bg-blue-500/20 transition-all"></div>
+                                <div className="flex items-center gap-2 mb-6 text-blue-400">
+                                    <Zap className="w-5 h-5 fill-current" />
+                                    <span className="text-xs font-black uppercase tracking-widest">Active Pattern Hub</span>
+                                </div>
+                                <div className="space-y-4 relative z-10">
+                                    {analysis?.all_patterns?.slice(0, 3).map((p, i) => (
+                                        <div key={i} className={`pb-4 last:pb-0 border-b last:border-0 ${isDark ? 'border-slate-800' : 'border-white/10'}`}>
+                                            <div className="flex justify-between items-center mb-1.5">
+                                                <p className="text-sm font-black group-hover:text-blue-400 transition-colors uppercase">{p.name}</p>
+                                                <span className="text-[9px] font-black bg-blue-600/20 text-blue-500 px-2 py-0.5 rounded-lg border border-blue-500/20">{p.timeframe}</span>
+                                            </div>
+                                            <p className={`text-[11px] font-medium leading-relaxed ${isDark ? 'text-slate-400' : 'text-gray-300 opacity-70'}`}>{p.desc}</p>
+                                        </div>
+                                    ))}
+                                    {(!analysis?.all_patterns || analysis.all_patterns.length === 0) && (
+                                        <p className="text-[11px] text-gray-500 italic py-4">No structural patterns detected in the current window.</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => setIsReportOpen(true)}
+                                className={`w-full py-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-2xl ${isDark ? 'bg-blue-600 text-white shadow-blue-900/40 hover:bg-blue-500' : 'bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700'}`}
+                            >
+                                <Eye className="w-6 h-6" />
+                                READ FULL REPORT
+                                <ChevronRight className="w-4 h-4 ml-1" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </main>
         </div>
     );

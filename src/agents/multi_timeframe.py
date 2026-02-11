@@ -26,27 +26,27 @@ class MultiTimeframeAnalyzer:
     
     TIMEFRAMES = {
         "short": {
-            "name": "단기 (데이 트레이딩)",
-            "description": "1~5일 단위의 빠른 매매 전략",
-            "data_period": "5d",
+            "name": "단기 (관점: 1개월)",
+            "description": "최근 1개월간의 1시간봉 기반 정밀 분석",
+            "data_period": "1mo",
             "data_interval": "1h",  # 1시간봉
-            "holding_period": "1~5일",
+            "holding_period": "1~4주",
             "focus": "기술적 지표, 단기 모멘텀, 거래량"
         },
         "medium": {
-            "name": "중기 (스윙 트레이딩)",
-            "description": "1~3개월 단위의 추세 추종 전략",
-            "data_period": "3mo",
+            "name": "중기 (관점: 6개월)",
+            "description": "최근 6개월간의 일봉 기반 추세 분석",
+            "data_period": "6mo",
             "data_interval": "1d",  # 일봉
-            "holding_period": "1~3개월",
+            "holding_period": "3~6개월",
             "focus": "차트 패턴, 이동평균선, 지지/저항"
         },
         "long": {
-            "name": "장기 (포지션 트레이딩)",
-            "description": "6개월~1년 이상의 가치 투자 전략",
+            "name": "장기 (관점: 1년 이상)",
+            "description": "2년 이상의 주봉 기반 가치 및 거시 선행 분석",
             "data_period": "2y",
             "data_interval": "1wk",  # 주봉
-            "holding_period": "6개월~수년",
+            "holding_period": "1년 이상",
             "focus": "펀더멘털, 장기 추세, 거시 경제"
         }
     }
@@ -141,6 +141,19 @@ class MultiTimeframeAnalyzer:
             
             # 고급 패턴 감지
             detected_patterns = self.pattern_detector.detect_all_patterns(stock_data)
+            
+            # 패턴 인덱스를 타임스탬프로 변환 (차트 시각화용)
+            for p in detected_patterns:
+                if 'points' in p:
+                    for pt in p['points']:
+                        idx = pt.get('index')
+                        if idx is not None and 0 <= idx < len(stock_data):
+                            # 타임스탬프를 문자열로 변환 (ISO 형식 또는 날짜만)
+                            ts = stock_data.index[idx]
+                            if timeframe == "short":
+                                pt['time'] = ts.strftime('%Y-%m-%d %H:%M:%S')
+                            else:
+                                pt['time'] = ts.strftime('%Y-%m-%d')
             
             # 시간 프레임별 매수/매도 타점 계산
             entry_exit_points = self._calculate_timeframe_entry_points(
@@ -315,8 +328,8 @@ class MultiTimeframeAnalyzer:
         low = recent['Low'].min()
         current = data['Close'].iloc[-1]
         
-        # 박스권 범위
-        box_range = (high - low) / low * 100
+        # 박스권 범위 (0으로 나누기 방지)
+        box_range = ((high - low) / low * 100) if low > 0 else 0
         
         # 현재가가 고점 근처인지
         near_high = (current / high) > 0.95

@@ -77,16 +77,19 @@ class PortfolioAnalyzer:
         # 3. 포트폴리오 종합 점수 (가중 평균)
         portfolio_score = sum(s['ai_score'] * s['weight'] / 100 for s in stock_analyses)
         
-        # 4. 분산도 평가
-        diversification = self._evaluate_diversification(stock_analyses)
+        # 4. 상관관계 분석 (추가)
+        correlations = self._calculate_correlations([s['ticker'] for s in stock_analyses])
         
-        # 5. 리스크 밸런스 평가
+        # 5. 분산도 평가 (상관계수 반영)
+        diversification = self._evaluate_diversification(stock_analyses, correlations)
+        
+        # 6. 리스크 밸런스 평가
         risk_balance = self._evaluate_risk_balance(stock_analyses)
         
-        # 6. 투자 스타일 일치도 평가
+        # 7. 투자 스타일 일치도 평가
         style_alignment = self._evaluate_style_alignment(stock_analyses)
         
-        # 7. 리밸런싱 제안 생성
+        # 8. 리밸런싱 제안 생성
         rebalancing = self._generate_rebalancing_suggestions(stock_analyses, total_value)
         
         return {
@@ -97,12 +100,14 @@ class PortfolioAnalyzer:
                                      sum(s['avg_price'] * s['shares'] for s in stock_analyses) * 100) 
                                      if sum(s['avg_price'] * s['shares'] for s in stock_analyses) > 0 else 0,
             "holdings": stock_analyses,
+            "correlations": correlations,
             "diversification": diversification,
             "risk_balance": risk_balance,
             "style_alignment": style_alignment,
             "rebalancing": rebalancing,
             "summary": self._generate_summary(portfolio_score, diversification, risk_balance, style_alignment)
         }
+
     
     def _analyze_holding(self, ticker: str, index_ticker: str) -> Optional[Dict[str, Any]]:
         """개별 종목 분석"""
@@ -138,36 +143,74 @@ class PortfolioAnalyzer:
             logger.error(f"{ticker} 분석 실패: {e}")
             return None
     
-    def _evaluate_diversification(self, holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """분산도 평가 (섹터/종목 집중도)"""
+    def _calculate_correlations(self, tickers: List[str]) -> Dict[str, Any]:
+        """종목 간 상관관계 계산"""
+        if len(tickers) < 2:
+            return {"matrix": {}, "avg_correlation": 0}
+            
+        try:
+            import yfinance as yf
+            # 최근 6개월 데이터 수집
+            data = yf.download(tickers, period="6mo")['Close']
+            returns = data.pct_change().dropna()
+            
+            corr_matrix = returns.corr()
+            
+            # JSON 직렬화 가능하도록 변환
+            matrix_dict = corr_matrix.to_dict()
+            
+            # 평균 상관계수 (자기 자신 제외)
+            avg_corr = (corr_matrix.sum().sum() - len(tickers)) / (len(tickers)**2 - len(tickers))
+            
+            return {
+                "matrix": matrix_dict,
+                "avg_correlation": round(avg_corr, 3)
+            }
+        except Exception as e:
+            logger.error(f"상관관계 계산 실패: {e}")
+            return {"matrix": {}, "avg_correlation": 0.5}
+
+    def _evaluate_diversification(self, holdings: List[Dict[str, Any]], correlations: Dict[str, Any]) -> Dict[str, Any]:
+        """분산도 평가 (섹터 집중도 + 상관관계 반영)"""
         sectors = [h['sector'] for h in holdings]
         sector_counts = Counter(sectors)
         
-        # 섹터 집중도 (HHI: Herfindahl-Hirschman Index)
+        # 1. 섹터 집중도 (HHI)
         sector_weights = [h['weight'] for h in holdings]
         hhi = sum(w**2 for w in sector_weights)
         
-        # 점수 산출 (HHI가 낮을수록 분산이 잘 됨)
-        if hhi < 2000:
-            score = 90
+        # 2. 상관관계 점수 (평균 상관계수가 낮을수록 좋음)
+        avg_corr = correlations.get("avg_correlation", 0.5)
+        corr_score = max(0, 100 - (avg_corr * 100))
+        
+        # 3. 종합 분산 점수 (HHI 60% + 상관관계 40%)
+        # HHI 점수 변환 (10000 -> 0, 0 -> 100)
+        hhi_score = max(0, 100 - (hhi / 100))
+        
+        total_score = (hhi_score * 0.6) + (corr_score * 0.4)
+        
+        if total_score >= 80:
             grade = "우수"
-        elif hhi < 4000:
-            score = 70
+            msg = "✅ 종목 및 섹터 분산이 매우 잘 되어 있으며 상관관계도 낮습니다."
+        elif total_score >= 60:
             grade = "양호"
-        elif hhi < 6000:
-            score = 50
+            msg = "✅ 전반적으로 양호한 분산 상태를 보입니다."
+        elif total_score >= 40:
             grade = "보통"
+            msg = "💡 분산도가 보통 수준입니다. 상관관계가 높은 종목이 있는지 확인하세요."
         else:
-            score = 30
             grade = "집중"
+            msg = "⚠️ 특정 종목/섹터에 과도하게 집중되었거나 종목 간 동조화가 강합니다."
         
         return {
-            "score": score,
+            "score": round(total_score, 1),
             "grade": grade,
             "hhi": round(hhi, 1),
+            "avg_correlation": avg_corr,
             "sector_distribution": dict(sector_counts),
-            "message": f"포트폴리오가 {len(sector_counts)}개 섹터에 분산되어 있습니다. 집중도: {grade}"
+            "message": msg
         }
+
     
     def _evaluate_risk_balance(self, holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
         """리스크 밸런스 평가"""

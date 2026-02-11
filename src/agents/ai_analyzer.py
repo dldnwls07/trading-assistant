@@ -61,144 +61,253 @@ class AIAnalyzer:
         
         return {"label": "unknown", "score": 0.0}
     
-    def generate_report(self, analysis_data: Dict[str, Any]) -> str:
+    def generate_report(self, analysis_data: Dict[str, Any], lang: str = "ko") -> str:
         """
-        분석 데이터를 바탕으로 전문가급 투자 리포트 생성
+        30여 가지 정밀 데이터를 바탕으로 AI가 스스로 판단하여 전문가급 투자 리포트 생성
+        lang: ko, en, zh, ja 지원
         """
         if not self.client:
             return self._generate_fallback_report(analysis_data)
         
-        # 프롬프트 구성 (Magnifi/Danelfin 스타일 가이드 반영)
         ticker = analysis_data.get("ticker", "UNKNOWN")
         score = analysis_data.get("final_score", 50)
         signal = analysis_data.get("signal", "중립")
         
-        # 신규 구조 적용 (Daily Analysis 기준)
-        daily = analysis_data.get("daily_analysis", {})
+        # 다중 시간 프레임 데이터
+        short = analysis_data.get("short_term", {})
+        medium = analysis_data.get("medium_term", {})
+        long = analysis_data.get("long_term", {})
+        consensus = analysis_data.get("consensus", {})
+        
+        # 기타 가용 데이터
         fund = analysis_data.get("fundamental", {})
+        macro = analysis_data.get("macro", {})
+        vol_price = analysis_data.get("volume_price", {})
+        psych = analysis_data.get("psychology", {})
         events = analysis_data.get("events", {})
-        
-        rsi_val = daily.get('rsi', 'N/A')
-        current_price = daily.get('last_close', 'N/A')
-        macd_summary = daily.get('summary', '데이터 없음')
-        
-        # 차트 패턴 정보
-        patterns = daily.get('patterns', [])
-        pattern_str = "\n".join([f"- {p['name']}: {p['desc']}" for p in patterns]) if patterns else "감지된 주요 패턴 없음"
-        
-        prompt = f"""당신은 Wall Street 15년 경력의 시니어 퀀트 애널리스트입니다. 아래 정밀 분석 데이터를 바탕으로 개인 투자자를 위한 프리미엄 리포트를 작성해주세요.
+        patterns = analysis_data.get("all_patterns", [])
 
-[분석 타겟] 티커: {ticker}
-[AI 확률 스코어] {score}/100
-[종합 투자의견] {signal}
+        # 언어별 페르소나 설정
+        lang_map = {
+            "ko": "시니어 퀀트 애널리스트 (한국어)",
+            "en": "Senior Quant Analyst (English)",
+            "zh": "资深量化分析师 (Chinese)",
+            "ja": "シニアクオンツアナリスト (Japanese)"
+        }
+        persona = lang_map.get(lang, lang_map["ko"])
 
-[기술적 분석 데이터]
-- 현재가: {current_price}
-- RSI (14일): {rsi_val}
-- MACD 상태: {macd_summary}
-- 포착된 핵심 차트 패턴:
-{pattern_str}
+        prompt = f"""You are a {persona} with 15 years of experience.
+Analyze following 30+ precision data points and generate a strategic report in {lang}.
+Do NOT just list the data. INTERPRET them and JUDGE what is most critical.
 
-[기업 기본 분석]
-- 재무 건전성 요약: {fund.get('summary', '정보 없음')}
+[Target Symbol] {ticker}
+[AI Confidence] {score}/100 | Opinion: {signal}
 
-[주요 일정 및 리스크]
-- 주요 일정(실적/배당): {events.get('earnings_date', '미정')}
-- 주의사항: RSI가 70이상이면 과열, 30이하면 과매도 가능성이 높음.
+[Detailed Multi-Layer Data]
+1. Short-Term (Snapshot: 1 month): Score {short.get('score', 'N/A')}, Momentum {short.get('specialized_insights', {}).get('quick_momentum', {}).get('momentum', 'N/A')}, RSI {short.get('full_analysis', {}).get('rsi', 'N/A')}
+2. Mid-Term (Snapshot: 6 months): Score {medium.get('score', 'N/A')}, Zone {medium.get('specialized_insights', {}).get('swing_zones', {}).get('zone', 'N/A')}, Trend {medium.get('specialized_insights', {}).get('trend_strength', {}).get('strength', 'N/A')}
+3. Long-Term (1 year+): Score {long.get('score', 'N/A')}, Phase {long.get('specialized_insights', {}).get('accumulation_phase', {}).get('phase', 'N/A')}, 52W Trend {long.get('specialized_insights', {}).get('long_term_trend', {}).get('trend', 'N/A')}
+4. Fundamentals: {fund.get('summary', 'N/A')}, Market Cap {events.get('market_cap', 'N/A')}, Sector {events.get('sector', 'N/A')}
+5. Macro/Sentiment: Correlation {macro.get('score', 'N/A')}, OBV energy {vol_price.get('score', 'N/A')}, Psychological disparity {psych.get('score', 'N/A')}
+6. Patterns: {len(patterns)} patterns detected. {patterns[0]['name'] if patterns else 'None'}
 
-작성 가이드라인:
-1. '마켓 인사이트': 현재 차트 패턴이 시사하는 바와 기술적 위치를 명확히 설명.
-2. '트레이딩 포인트': 구체적인 진입 타점과 목표가를 확률적으로 제시.
-3. '리스크 경고': 투자자가 가장 조심해야 할 1가지를 명시.
-4. '최종 컨설팅': 보수적이지만 단호한 어조로 최종 행동 지침 제언.
+Instructions:
+1. 'Critical Insight': Pick the TOP 3 most important indicators among these and explain WHY they are critical now.
+2. 'Data Conflict?': If indicators conflict (e.g. short-term overbought but long-term accumulation), solve the logic and tell the user.
+3. 'Trading Plan': Give precise Entry/Target points based on the consensus: {consensus.get('consensus', 'N/A')}.
+4. 'Risk Alert': What is the 1 thing the user must watch out for today?
 
-최소 300자 이상의 한국어로 전문성 있게 작성하되, 가독성을 위해 불렛 포인트를 사용하세요."""
+Write in a professional, decisive tone in {lang}."""
 
         try:
-            # 경량 LLM 사용
             response = self.client.text_generation(
                 prompt,
                 model="microsoft/Phi-3-mini-4k-instruct",
-                max_new_tokens=400,
+                max_new_tokens=800,
                 temperature=0.7
             )
-            
-            if response:
-                return response.strip()
-                
+            if response: return response.strip()
         except Exception as e:
-            logger.error(f"리포트 생성 오류: {e}")
-            # 모델이 안 되면 다른 모델 시도
-            try:
-                response = self.client.text_generation(
-                    prompt,
-                    model="HuggingFaceH4/zephyr-7b-beta",
-                    max_new_tokens=300,
-                    temperature=0.7
-                )
-                if response:
-                    return response.strip()
-            except:
-                pass
+            logger.error(f"AI Report generation failed: {e}")
         
         return self._generate_fallback_report(analysis_data)
     
     def _generate_fallback_report(self, analysis_data: Dict[str, Any]) -> str:
-        """AI API 실패 시 규칙 기반 리포트 생성 (이모지 없는 버전)"""
+        """AI API 실패 시 규칙 기반 리포트 생성 (전문가급 상세 버전)"""
         ticker = analysis_data.get("ticker", "UNKNOWN")
         score = analysis_data.get("final_score", 50)
         signal = analysis_data.get("signal", "관망")
-        # 신호에서 이모지 제거
-        signal_clean = signal.replace('📈', '').replace('📉', '').replace('⚠️', '').replace('🔥', '').strip()
         
-        daily = analysis_data.get("daily_analysis", {})
-        entry = analysis_data.get("entry_points", {})
+        # 시간 프레임별 데이터 추출
+        short = analysis_data.get("short_term", {})
+        medium = analysis_data.get("medium_term", {})
+        long = analysis_data.get("long_term", {})
+        consensus = analysis_data.get("consensus", {})
         events = analysis_data.get("events", {})
+        patterns = analysis_data.get("all_patterns", [])
+        fundamental = analysis_data.get("fundamental", {})
+        macro = analysis_data.get("macro", {})
+        vol_price = analysis_data.get("volume_price", {})
+        psychology = analysis_data.get("psychology", {})
         
         report = []
-        report.append(f"[{ticker}] 투자 분석 리포트 (Fallback)")
-        report.append("=" * 40)
+        report.append(f"╔═══════════════════════════════════════════════════╗")
+        report.append(f"║  [{ticker}] 전문가급 AI 종합 분석 리포트         ║")
+        report.append(f"╚═══════════════════════════════════════════════════╝")
+        report.append("")
+        report.append(f"📊 **최종 투자 의견**: {signal} (AI 신뢰도: {score}/100)")
+        report.append("=" * 60)
         report.append("")
         
-        # 현재 상황 요약
-        if score >= 70:
-            report.append(f"[+] 상황 요약: 기술적/기본적 지표가 모두 긍정적입니다. 매수 우위 시장.")
-        elif score >= 50:
-            report.append(f"[=] 상황 요약: 혼조세가 강합니다. 박스권 매매 또는 관망을 제안합니다.")
-        else:
-            report.append(f"[-] 상황 요약: 하향 압력이 거셉니다. 리스크 관리가 최우선입니다.")
-        
+        # ===== 1. 핵심 요약 =====
+        report.append("🎯 **핵심 요약 (Executive Summary)**")
+        report.append("-" * 60)
+        consensus_rec = consensus.get('recommendation', '데이터 분석 중...')
+        report.append(f"  {consensus_rec}")
         report.append("")
         
-        # 매수/매도 타점
-        if entry:
-            # 타점에 이미 포맷팅된 문자열이 있음 (buy, target, stop)
-            report.append("[*] AI 추천 정밀 타점:")
-            report.append(f"    - 현재가: {entry.get('current_price', 0):,.0f}")
-            report.append(f"    - 매수가: {entry.get('buy', 'N/A')}")
-            report.append(f"    - 목표가: {entry.get('target', 'N/A')}")
-            report.append(f"    - 손절가: {entry.get('stop', 'N/A')}")
+        # 시장 포지션
+        if events:
+            sector = events.get('sector', 'N/A')
+            industry = events.get('industry', 'N/A')
+            market_cap = events.get('market_cap', 0)
+            if market_cap:
+                cap_str = f"${market_cap/1e9:.2f}B" if market_cap > 1e9 else f"${market_cap/1e6:.2f}M"
+                report.append(f"  📌 섹터: {sector} | 산업: {industry} | 시가총액: {cap_str}")
+                report.append("")
         
+        # ===== 2. 다중 시간 프레임 분석 =====
+        report.append("📈 **다중 시간 프레임 분석**")
+        report.append("-" * 60)
+        
+        # 단기
+        report.append("🔹 **단기 전망 (1개월)**")
+        if short:
+            sh_score = short.get('score', 0)
+            sh_signal = short.get('signal', '중립')
+            sh_insights = short.get('specialized_insights', {})
+            sh_full = short.get('full_analysis', {})
+            
+            report.append(f"   • 점수: {sh_score}/100 | 신호: {sh_signal}")
+            
+            momentum_data = sh_insights.get('quick_momentum', {})
+            if momentum_data:
+                report.append(f"   • 단기 모멘텀: {momentum_data.get('message', 'N/A')}")
+            
+            vol_data = sh_insights.get('intraday_volatility', {})
+            if vol_data:
+                report.append(f"   • 변동성: {vol_data.get('interpretation', 'N/A')}")
+            
+            rsi = sh_full.get('rsi', 0)
+            if rsi:
+                rsi_status = "과매수" if rsi > 70 else "과매도" if rsi < 30 else "중립"
+                report.append(f"   • RSI(14): {rsi:.1f} ({rsi_status})")
+            
+            entry = short.get('entry_points', {})
+            if entry:
+                buy_zone = entry.get('buy_zone', [])
+                if buy_zone:
+                    buy_p = buy_zone[0].get('price', 0)
+                    tp_p = entry.get('take_profit', 0)
+                    sl_p = entry.get('stop_loss', 0)
+                    report.append(f"   • **추천 타점**: 매수 ${buy_p:,.2f} | 목표 ${tp_p:,.2f} | 손절 ${sl_p:,.2f}")
         report.append("")
         
-        # 이벤트 정보
+        # 중기
+        report.append("🔹 **중기 전망 (6개월)**")
+        if medium:
+            md_score = medium.get('score', 0)
+            md_signal = medium.get('signal', '중립')
+            md_insights = medium.get('specialized_insights', {})
+            
+            report.append(f"   • 점수: {md_score}/100 | 신호: {md_signal}")
+            
+            trend_data = md_insights.get('trend_strength', {})
+            if trend_data:
+                report.append(f"   • 추세 강도: {trend_data.get('message', 'N/A')}")
+            
+            zone_data = md_insights.get('swing_zones', {})
+            if zone_data:
+                report.append(f"   • 현재 구간: {zone_data.get('zone', 'N/A')}")
+            
+            entry = medium.get('entry_points', {})
+            if entry:
+                buy_zone = entry.get('buy_zone', [])
+                if buy_zone:
+                    buy_p = buy_zone[0].get('price', 0)
+                    tp_p = entry.get('take_profit', 0)
+                    report.append(f"   • **스윙 전략**: 매입 ${buy_p:,.2f} | 목표 ${tp_p:,.2f}")
+        report.append("")
+        
+        # 장기
+        report.append("🔹 **장기 전망 (1년+)**")
+        if long:
+            lg_score = long.get('score', 0)
+            lg_signal = long.get('signal', '중립')
+            lg_insights = long.get('specialized_insights', {})
+            
+            report.append(f"   • 점수: {lg_score}/100 | 신호: {lg_signal}")
+            
+            trend_data = lg_insights.get('long_term_trend', {})
+            if trend_data:
+                report.append(f"   • 연간 추세: {trend_data.get('message', 'N/A')}")
+            
+            phase_data = lg_insights.get('accumulation_phase', {})
+            if phase_data:
+                report.append(f"   • 매집 단계: {phase_data.get('message', 'N/A')}")
+        report.append("")
+        
+        # ===== 3. 차트 패턴 =====
+        if patterns:
+            report.append("🔍 **차트 패턴 분석**")
+            report.append("-" * 60)
+            for i, pattern in enumerate(patterns[:3], 1):
+                name = pattern.get('name', 'Unknown')
+                ptype = pattern.get('type', 'N/A')
+                reliability = pattern.get('reliability', 0)
+                desc = pattern.get('desc', '')
+                report.append(f"   {i}. **{name}** ({ptype}) - 신뢰도: {reliability:.1f}/5.0")
+                report.append(f"      {desc}")
+            report.append("")
+        
+        # ===== 4. 리스크 요인 =====
+        report.append("⚠️ **주요 리스크 요인**")
+        report.append("-" * 60)
+        
         if events:
             earnings = events.get('earnings_date')
             if earnings:
-                report.append(f"[!] 알림: {earnings} 실적 발표 예정. 변동성 주의.")
+                report.append(f"   • 📅 실적 발표: {earnings} (변동성 극대화 예상)")
         
-        report.append("")
-        
-        # 리스크
-        rsi = daily.get('rsi', 50)
-        if isinstance(rsi, (int, float)):
+        if short:
+            rsi = short.get('full_analysis', {}).get('rsi', 0)
             if rsi > 70:
-                report.append(f"[주의] 단기 과열: RSI {rsi:.1f}로 조정 가능성 존재.")
+                report.append(f"   • 🔴 과매수 구간 (RSI {rsi:.1f}) - 단기 조정 가능성")
             elif rsi < 30:
-                report.append(f"[기회] 낙폭 과대: RSI {rsi:.1f}로 기술적 반등 기대 가능.")
+                report.append(f"   • 🟢 과매도 구간 (RSI {rsi:.1f}) - 반등 가능성")
         
         report.append("")
-        report.append(f">>> 최종 결론: {signal_clean} (신뢰도 {score}%)")
+        
+        # ===== 5. 최종 결론 =====
+        report.append("🎯 **최종 투자 전략**")
+        report.append("=" * 60)
+        
+        if score >= 70:
+            report.append("   ✅ **강력 매수**: 현재 시점에서 매수 포지션 진입을 적극 권장합니다.")
+        elif score >= 60:
+            report.append("   ✅ **매수**: 긍정적 신호가 우세합니다. 분할 매수 전략을 고려하세요.")
+        elif score >= 50:
+            report.append("   ⚪ **중립**: 관망이 적절합니다. 추가 신호를 기다리세요.")
+        elif score >= 40:
+            report.append("   ⚠️ **매도**: 부정적 신호가 감지됩니다. 보유 시 손절 라인 설정 필수.")
+        else:
+            report.append("   🔴 **강력 매도**: 즉시 청산을 검토하세요.")
+        
+        report.append("")
+        report.append("=" * 60)
+        report.append("📌 본 리포트는 AI 알고리즘 기반 참고 자료이며,")
+        report.append("   실제 투자 판단 및 손익은 전적으로 투자자 본인의 책임입니다.")
+        report.append("=" * 60)
         
         return "\n".join(report)
 
@@ -206,9 +315,6 @@ class AIAnalyzer:
 def get_stock_events(ticker: str) -> Dict[str, Any]:
     """
     yfinance를 통해 주요 이벤트 일정 수집
-    - 실적 발표일
-    - 배당락일
-    - 주주총회
     """
     import yfinance as yf
     
@@ -217,7 +323,6 @@ def get_stock_events(ticker: str) -> Dict[str, Any]:
     try:
         stock = yf.Ticker(ticker)
         
-        # 실적 발표일
         try:
             calendar = stock.calendar
             if calendar is not None:
@@ -230,14 +335,9 @@ def get_stock_events(ticker: str) -> Dict[str, Any]:
                         ex_div = calendar['Ex-Dividend Date']
                         if ex_div:
                             events['ex_dividend_date'] = str(ex_div.date() if hasattr(ex_div, 'date') else ex_div)
-                    if 'Dividend Date' in calendar:
-                        div_date = calendar['Dividend Date']
-                        if div_date:
-                            events['dividend_date'] = str(div_date.date() if hasattr(div_date, 'date') else div_date)
         except:
             pass
         
-        # 배당 정보
         try:
             info = stock.info
             if info:

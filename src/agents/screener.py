@@ -20,6 +20,16 @@ class StockScreener:
     
     def __init__(self, analyst: StockAnalyst = None):
         self.analyst = analyst or StockAnalyst()
+    
+    def _fetch_data(self, ticker: str, period: str = "1y", interval: str = "1d") -> Optional[pd.DataFrame]:
+        """yfinance를 통한 주가 데이터 수집"""
+        try:
+            stock = yf.Ticker(ticker)
+            df = stock.history(period=period, interval=interval)
+            return df if not df.empty else None
+        except Exception as e:
+            logger.warning(f"{ticker} 데이터 수집 실패: {e}")
+            return None
         
     def screen_stocks(self, 
                      tickers: List[str], 
@@ -84,9 +94,9 @@ class StockScreener:
                 ticker=ticker,
                 daily_df=daily_df,
                 index_df=index_df,
-                financials=None,  # TODO: 재무제표 연동 시 추가
+                financials=None,
                 hourly_df=None,
-                sentiment_data=None  # TODO: 뉴스 감성 분석 연동 시 추가
+                sentiment_data=None
             )
             
             # 투자 스타일 필터링 적용
@@ -98,138 +108,138 @@ class StockScreener:
             return {
                 "ticker": ticker,
                 "score": round(final_score, 1),
-                "base_score": analysis['final_score'],
-                "style_fit": style_score,
                 "signal": analysis['signal'],
+                "reason": self._generate_reason(analysis, investor_style),
                 "current_price": daily_df['Close'].iloc[-1],
-                "reason": self._generate_recommendation_reason(ticker, analysis, investor_style),
-                "entry_points": analysis.get('entry_points', {}),
-                "analysis": analysis  # 전체 분석 결과 포함
+                "change_1d": ((daily_df['Close'].iloc[-1] - daily_df['Close'].iloc[-2]) / daily_df['Close'].iloc[-2] * 100) if len(daily_df) >= 2 else 0
             }
-            
         except Exception as e:
             logger.error(f"{ticker} 분석 중 오류: {e}")
             return None
     
-    def _apply_style_filter(self, 
-                           ticker: str,
-                           daily_df: pd.DataFrame, 
-                           analysis: Dict[str, Any],
-                           style: str) -> int:
-        """
-        투자 스타일에 따른 적합도 점수 (0~100)
-        """
-        score = 50  # 기본 점수
-        
-        daily = analysis.get('daily_analysis', {})
-        fund = analysis.get('fundamental', {})
-        macro = analysis.get('macro', {})
-        vol = analysis.get('volume_price', {})
-        
-        rsi = daily.get('rsi', 50)
-        current_price = daily.get('last_close', 0)
+    def _apply_style_filter(self, ticker: str, df: pd.DataFrame, analysis: Dict, style: str) -> float:
+        """투자 스타일별 가중치 적용"""
+        base_score = 100
         
         if style == "aggressive_growth":
-            # 공격적 성장형: 고성장, 고변동성, 모멘텀 중시
-            if rsi < 40:  # 과매도 구간 선호
-                score += 20
-            if vol.get('score', 50) > 60:  # 거래량 증가
-                score += 15
-            # TODO: 매출 성장률 > 20% 조건 추가 (재무제표 연동 후)
-            
-        elif style == "dividend":
-            # 안정적 배당형: 저변동성, 배당 수익률 중시
-            if rsi > 40 and rsi < 60:  # 안정적 구간
-                score += 15
-            if macro.get('score', 50) > 50:  # 거시 환경 양호
-                score += 10
-            # TODO: 배당 수익률 > 3% 조건 추가
-            
-        elif style == "value":
-            # 가치 투자형: 저평가, 펀더멘털 중시
-            if fund.get('score', 50) > 60:  # 재무 건전성 우수
-                score += 20
-            if current_price < daily_df['Close'].rolling(200).mean().iloc[-1]:  # 200일선 하회
-                score += 15
-            # TODO: PER, PBR 조건 추가
-            
-        elif style == "momentum":
-            # 모멘텀 트레이딩형: 기술적 신호 중시
-            macd = daily.get('macd', {})
-            if macd.get('MACD', 0) > macd.get('Signal', 0):  # MACD 골든크로스
-                score += 20
-            if vol.get('score', 50) > 65:  # 강한 거래량
-                score += 15
-            
-        elif style == "balanced":
-            # 균형형: 모든 지표 골고루 반영
-            if 40 <= analysis['final_score'] <= 70:
-                score += 20
-            if macro.get('score', 50) > 45:
-                score += 10
+            # 공격적 성장: 모멘텀 + 변동성
+            momentum = analysis.get('momentum', {}).get('score', 50)
+            volatility = analysis.get('volatility', {}).get('score', 50)
+            return (momentum * 0.7 + volatility * 0.3)
         
-        return max(0, min(100, score))
+        elif style == "dividend":
+            # 배당: 안정성 + 펀더멘털
+            fundamental = analysis.get('fundamental', {}).get('score', 50)
+            return fundamental * 1.2
+        
+        elif style == "value":
+            # 가치투자: 펀더멘털 중시
+            fundamental = analysis.get('fundamental', {}).get('score', 50)
+            return fundamental * 1.5
+        
+        elif style == "momentum":
+            # 모멘텀: 단기 추세
+            momentum = analysis.get('momentum', {}).get('score', 50)
+            return momentum * 1.3
+        
+        else:  # balanced
+            return base_score
     
-    def _generate_recommendation_reason(self, 
-                                       ticker: str,
-                                       analysis: Dict[str, Any],
-                                       style: str) -> str:
-        """추천 근거 생성 (한국어)"""
+    def _generate_reason(self, analysis: Dict, style: str) -> str:
+        """추천 이유 생성"""
         reasons = []
         
-        # 종합 신호
-        signal = analysis.get('signal', '중립')
-        reasons.append(f"종합 신호: {signal}")
+        if analysis['final_score'] > 70:
+            reasons.append("강력한 매수 신호")
+        elif analysis['final_score'] > 60:
+            reasons.append("긍정적 전망")
         
-        # 스타일별 맞춤 근거
-        style_names = {
-            "aggressive_growth": "공격적 성장형",
-            "dividend": "안정적 배당형",
-            "value": "가치 투자형",
-            "momentum": "모멘텀 트레이딩형",
-            "balanced": "균형 포트폴리오형"
-        }
+        tech_score = analysis.get('technical', {}).get('score', 0)
+        if tech_score > 65:
+            reasons.append("기술적 지표 우수")
         
-        reasons.append(f"'{style_names.get(style, style)}' 투자 스타일에 적합")
-        
-        # 주요 강점 추출
-        daily = analysis.get('daily_analysis', {})
-        if daily:
-            summary = daily.get('summary', '')
-            if summary:
-                reasons.append(f"기술적: {summary[:50]}...")
-        
-        macro = analysis.get('macro', {})
-        if macro and macro.get('details'):
-            reasons.append(f"거시적: {macro['details'][0][:50]}...")
-        
-        return " | ".join(reasons)
+        return " | ".join(reasons) if reasons else "종합 분석 결과 양호"
     
-    def _fetch_data(self, ticker: str, period: str = "1y") -> Optional[pd.DataFrame]:
-        """yfinance를 통한 데이터 수집"""
+    def get_market_tickers(self, market: str = "US", limit: int = 50) -> List[str]:
+        """시장별 주요 종목 리스트 반환"""
+        if market == "US":
+            return [
+                "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "JPM", "V",
+                "JNJ", "WMT", "PG", "MA", "HD", "DIS", "PYPL", "NFLX", "ADBE", "CRM",
+                "INTC", "CSCO", "PFE", "KO", "PEP", "ABT", "MRK", "TMO", "ABBV", "COST",
+                "AVGO", "ACN", "NKE", "TXN", "LIN", "DHR", "UNP", "NEE", "ORCL", "PM",
+                "HON", "UPS", "RTX", "QCOM", "BMY", "LMT", "LOW", "AMD", "BA", "IBM"
+            ][:limit]
+        elif market == "KR":
+            return [
+                "005930.KS", "000660.KS", "035420.KS", "035720.KS", "051910.KS",
+                "006400.KS", "005380.KS", "068270.KS", "207940.KS", "005490.KS",
+                "000270.KS", "105560.KS", "055550.KS", "096770.KS", "012330.KS",
+                "028260.KS", "066570.KS", "003550.KS", "017670.KS", "034730.KS",
+                "009150.KS", "032830.KS", "018260.KS", "003670.KS", "015760.KS",
+                "086520.KQ", "247540.KQ", "373220.KS", "000100.KS", "011170.KS"
+            ][:limit]
+        else:
+            return []
+    
+    def get_recommendations(self, style: str = "balanced", market: str = "US", limit: int = 10) -> Dict[str, Any]:
+        """AI 추천 종목 조회"""
+        tickers = self.get_market_tickers(market, limit=50)
+        recommendations = self.screen_stocks(tickers, investor_style=style, top_n=limit)
+        
+        return {
+            "style": style,
+            "market": market,
+            "recommendations": recommendations,
+            "timestamp": pd.Timestamp.now().isoformat()
+        }
+    
+    def get_top_movers(self, market: str = "US") -> Dict[str, Any]:
+        """급등/급락 종목 조회"""
+        tickers = self.get_market_tickers(market, limit=30)
+        
+        gainers = []
+        losers = []
+        
+        # 병렬로 가격 변동 확인
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(self._get_stock_change, ticker): ticker for ticker in tickers}
+            for future in as_completed(futures):
+                res = future.result()
+                if res:
+                    if res['change'] > 0:
+                        gainers.append(res)
+                    else:
+                        losers.append(res)
+        
+        # 정렬
+        gainers.sort(key=lambda x: x['change'], reverse=True)
+        losers.sort(key=lambda x: x['change'])
+        
+        return {
+            "market": market,
+            "gainers": gainers[:5],
+            "losers": losers[:5]
+        }
+
+    def _get_stock_change(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """단일 종목의 당일 변동률 조회"""
         try:
             stock = yf.Ticker(ticker)
-            df = stock.history(period=period)
-            if df.empty:
-                return None
-            return df
-        except Exception as e:
-            logger.warning(f"{ticker} 데이터 수집 실패: {e}")
+            hist = stock.history(period="5d")
+            if len(hist) < 2: return None
+            
+            prev_close = hist['Close'].iloc[-2]
+            current_close = hist['Close'].iloc[-1]
+            change_pct = ((current_close - prev_close) / prev_close) * 100
+            
+            return {
+                "ticker": ticker,
+                "price": round(current_close, 2),
+                "change": round(change_pct, 2)
+            }
+        except:
             return None
-    
-    def get_sp500_tickers(self) -> List[str]:
-        """S&P 500 종목 리스트 가져오기"""
-        try:
-            # Wikipedia에서 S&P 500 종목 리스트 크롤링
-            url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-            tables = pd.read_html(url)
-            df = tables[0]
-            return df['Symbol'].tolist()
-        except Exception as e:
-            logger.error(f"S&P 500 종목 리스트 가져오기 실패: {e}")
-            # 대체: 주요 종목 샘플
-            return ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK.B", "V", "JNJ"]
-
 
 # 사용 예시
 if __name__ == "__main__":
@@ -237,18 +247,15 @@ if __name__ == "__main__":
     
     screener = StockScreener()
     
-    # 샘플 종목 풀 (실제로는 S&P 500 전체)
-    sample_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "JPM", "V", "WMT"]
-    
     # 공격적 성장형 투자자를 위한 추천
-    recommendations = screener.screen_stocks(
-        tickers=sample_tickers,
-        investor_style="aggressive_growth",
-        top_n=5
-    )
+    recommendations = screener.get_recommendations(style="aggressive_growth", market="US")
     
     print("\n=== AI 추천 종목 (공격적 성장형) ===")
-    for i, rec in enumerate(recommendations, 1):
+    for i, rec in enumerate(recommendations['recommendations'], 1):
         print(f"{i}. {rec['ticker']} - 점수: {rec['score']}")
         print(f"   {rec['reason']}")
-        print()
+    
+    movers = screener.get_top_movers(market="US")
+    print("\n=== 시장 급등 종목 ===")
+    for m in movers['gainers']:
+        print(f"{m['ticker']}: {m['change']}%")
