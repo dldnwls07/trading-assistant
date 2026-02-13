@@ -12,12 +12,49 @@ class TechnicalAnalyzer:
     """
     
     def calculate_rsi(self, data: pd.DataFrame, window: int = 14) -> pd.Series:
-        """RSI (상대강도지수) 계산"""
+        """
+        RSI (상대강도지수) 계산 - Wilder's Smoothing (EMA) 방식
+        변동이 없는 경우 50.0을 반환하여 0.0 오류 방지
+        """
+        if data is None or 'Close' not in data.columns or len(data) < window:
+            return pd.Series(50.0, index=data.index)
+
         delta = data['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-        rs = gain / loss
-        return 100 - (100 / (1 + rs))
+        
+        # 상승/하락분 분리
+        gain = delta.copy()
+        loss = delta.copy()
+        gain[gain < 0] = 0
+        loss[loss > 0] = 0
+        loss = abs(loss)
+        
+        # Wilder's Smoothing (alpha = 1/window)
+        # adjust=False는 재귀적 정의를 따르기 위함
+        avg_gain = gain.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
+        
+        # 결과 계산
+        rsi = pd.Series(np.nan, index=data.index)
+        
+        # 1. 변동이 없는 구간 (Gain/Loss 모두 0) -> 50.0
+        no_move = (avg_gain == 0) & (avg_loss == 0)
+        rsi[no_move] = 50.0
+        
+        # 2. 손실 없이 상승만 한 구간 -> 100.0
+        always_up = (avg_gain > 0) & (avg_loss == 0)
+        rsi[always_up] = 100.0
+        
+        # 3. 수익 없이 하락만 한 구간 -> 0.0
+        always_down = (avg_gain == 0) & (avg_loss > 0)
+        rsi[always_down] = 0.0
+        
+        # 4. 일반적인 경우 (RS 계산)
+        normal = (avg_gain > 0) & (avg_loss > 0)
+        rs = avg_gain[normal] / avg_loss[normal]
+        rsi[normal] = 100.0 - (100.0 / (1.0 + rs))
+        
+        # 앞부분의 NaN을 50.0으로 채워 분석 품질 유지
+        return rsi.fillna(50.0)
 
     def calculate_macd(self, data: pd.DataFrame) -> pd.DataFrame:
         """MACD 계산"""
@@ -37,14 +74,97 @@ class TechnicalAnalyzer:
             'BB_Lower': sma - (std * 2)
         })
 
-    def find_support_resistance(self, data: pd.DataFrame) -> Dict[str, float]:
-        """지지선/저항선 계산 (최근 60일 기준)"""
-        recent = data.tail(60)
+    def find_support_resistance(self, data: pd.DataFrame) -> Dict[str, Any]:
+        """
+        정밀 지지/저항 레벨 계산 (Clustering & Pivot)
+        """
+        if data is None or len(data) < 30:
+            return {'resistance': 0, 'support': 0, 'levels': []}
+
+        # 1. 히스토리컬 레벨 (최근 120일)
+        recent = data.tail(120)
+        levels = []
+        
+        # 로컬 고점/저점 추출 (Window 5)
+        for i in range(5, len(recent)-5):
+            if recent['High'].iloc[i] == recent['High'].iloc[i-5:i+5].max():
+                levels.append(recent['High'].iloc[i])
+            if recent['Low'].iloc[i] == recent['Low'].iloc[i-5:i+5].min():
+                levels.append(recent['Low'].iloc[i])
+        
+        # 레벨 클러스터링 (비슷한 가격대는 하나로 통합)
+        levels.sort()
+        merged_levels = []
+        if levels:
+            curr = levels[0]
+            count = 1
+            for i in range(1, len(levels)):
+                if levels[i] - curr < (curr * 0.02): # 2% 이내 차이는 같은 레벨로 간주
+                    # 가중 평균 (더 많이 부딪힌 곳이 강한 레벨)
+                    curr = (curr * count + levels[i]) / (count + 1)
+                    count += 1
+                else:
+                    merged_levels.append(curr)
+                    curr = levels[i]
+                    count = 1
+            merged_levels.append(curr)
+            
+        current_price = data['Close'].iloc[-1]
+        
+        # 현재가 기준 가장 가까운 지지/저항 찾기
+        supports = [l for l in merged_levels if l < current_price]
+        resistances = [l for l in merged_levels if l > current_price]
+        
+        # 2. 피벗 포인트 계산 (내일의 예상 범위)
+        last_high = recent['High'].iloc[-1]
+        last_low = recent['Low'].iloc[-1]
+        last_close = recent['Close'].iloc[-1]
+        pivot = (last_high + last_low + last_close) / 3
+        r1 = (2 * pivot) - last_low
+        s1 = (2 * pivot) - last_high
+        
+        # 데이터 병합
         return {
-            'resistance': recent['High'].max(),
-            'support': recent['Low'].min(),
-            'pivot': (recent['High'].max() + recent['Low'].min() + recent['Close'].iloc[-1]) / 3
+            'current_price': current_price,
+            'resistance': resistances[0] if resistances else r1, # 없으면 피벗 R1 사용
+            'support': supports[-1] if supports else s1,         # 없으면 피벗 S1 사용
+            'pivot': pivot,
+            'levels': merged_levels,
+            'pivot_levels': {'P': pivot, 'R1': r1, 'S1': s1}
         }
+
+    def get_price_scenarios(self, data: pd.DataFrame) -> Dict[str, str]:
+        """
+        가격 변동 시나리오 생성 (If-This-Then-That)
+        """
+        sr = self.find_support_resistance(data)
+        curr = sr['current_price']
+        sup = sr['support']
+        res = sr['resistance']
+        
+        scenarios = {}
+        
+        # 하락 시나리오
+        if sup > 0:
+            downside_risk = (curr - sup) / curr * 100
+            scenarios['bearish'] = (
+                f"지지선 {sup:,.0f} 붕괴 시, 추가 하락 가능성이 열립니다. "
+                f"(현재가 대비 -{downside_risk:.1f}%)"
+            )
+        else:
+            scenarios['bearish'] = "뚜렷한 하단 지지선이 없어 리스크 관리가 필요합니다."
+            
+        # 상승 시나리오
+        if res > 0:
+            upside_potential = (res - curr) / curr * 100
+            scenarios['bullish'] = (
+                f"저항선 {res:,.0f} 돌파 시, 상승 추세가 가속화될 수 있습니다. "
+                f"(현재가 대비 +{upside_potential:.1f}%)"
+            )
+        else:
+            scenarios['bullish'] = "신고가 영역으로 상단이 열려있습니다."
+            
+        return scenarios
 
     def detect_patterns(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """
@@ -563,6 +683,11 @@ class StockAnalyst:
         res["final_score"] = self._calculate_smart_score(res)
         res["signal"] = self._get_signal_text(res["final_score"])
         res["entry_points"] = self._calculate_entry_points(daily_df, hourly_df)
+        
+        # 가격 시나리오 추가
+        if daily_df is not None:
+             res["price_scenarios"] = self.tech.get_price_scenarios(daily_df)
+             
         res["full_report"] = self._generate_full_report(res)
 
         return res

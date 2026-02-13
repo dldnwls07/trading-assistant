@@ -30,6 +30,8 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
         showDC: false,
         showIchimoku: false,
         showVWAP: false,
+        showPivot: false,
+        showSAR: false,
         showAIQuotes: true,
 
         // 하단 지표 (Oscillators)
@@ -203,6 +205,45 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
                 if (stop) mainSeries.createPriceLine({ price: parseFloat(stop), color: '#60a5fa', lineWidth: 2, lineStyle: 1, title: 'AI STOP' });
             }
 
+            // === Pivot Points ===
+            if (chartConfig.showPivot) {
+                const pColor = isDark ? '#fbbf24' : '#eab308';
+                const sColor = isDark ? '#ef4444' : '#dc2626';
+                const rColor = isDark ? '#10b981' : '#059669';
+
+                const pivot = chart.addSeries(LineSeries, { color: pColor, lineWidth: 1, lineStyle: 2, title: 'Pivot' });
+                const r1 = chart.addSeries(LineSeries, { color: rColor, lineWidth: 1, lineStyle: 1, title: 'mR1' });
+                const s1 = chart.addSeries(LineSeries, { color: sColor, lineWidth: 1, lineStyle: 1, title: 'mS1' });
+
+                pivot.setData(finalData.filter(d => d.pivot_classic).map(d => ({ time: d.time, value: d.pivot_classic })));
+                r1.setData(finalData.filter(d => d.pivot_r1).map(d => ({ time: d.time, value: d.pivot_r1 })));
+                s1.setData(finalData.filter(d => d.pivot_s1).map(d => ({ time: d.time, value: d.pivot_s1 })));
+            }
+
+            // === Parabolic SAR ===
+            if (chartConfig.showSAR) {
+                // SAR은 점으로 표시해야 하므로 LineType을 활용하거나 marker 사용
+                // Lightweight chart 3.8+ 에서는 markers 사용 권장, 여기서는 Scatter 스타일이 없으므로 Small Cross Series로 대체
+                const sarSeries = chart.addSeries(LineSeries, {
+                    color: isDark ? '#ffffff' : '#000000',
+                    lineWidth: 0,
+                    pointMarkerVisible: true,
+                    pointMarkerRadius: 3,
+                    pointMarkerBorderColor: isDark ? '#ffffff' : '#000000',
+                    pointMarkerBackgroundColor: isDark ? '#ffffff' : '#000000',
+                    title: 'SAR'
+                });
+
+                // lineVisible: false는 lightweigt-charts 버전 버전에 따라 옵션이 다름. 
+                // 여기서는 lineWidth: 0으로 선을 숨기고 마커만 표시 시도
+
+                sarSeries.setData(finalData.filter(d => d.parabolic_sar).map(d => ({ time: d.time, value: d.parabolic_sar })));
+
+                // 만약 위 방법으로 선이 보인다면, markers API를 사용하는 것이 정석임.
+                // 하지만 markers는 시계열 데이터(Series)가 아니라 '이벤트' 마커용임.
+                // 따라서 LineSeries + lineWidth: 0 패턴을 사용.
+            }
+
             // === 하단 지표 (Oscillators & Volume) ===
             let paneIndex = 0.7;
 
@@ -286,15 +327,6 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
         }
     }, [data, interval, chartConfig, analysis, isFullscreen, isDark, upColor, downColor]);
 
-    const Toggle = ({ label, value, onToggle }) => (
-        <div onClick={onToggle} className="flex items-center justify-between p-2 hover:bg-slate-700/50 rounded cursor-pointer">
-            <span className="text-xs text-slate-300">{label}</span>
-            <div className={`w-9 h-5 rounded-full transition ${value ? 'bg-blue-500' : 'bg-slate-600'} relative`}>
-                <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${value ? 'left-4' : 'left-0.5'}`} />
-            </div>
-        </div>
-    );
-
     return (
         <div className="relative w-full">
             <div className="absolute top-2 right-2 z-10 flex gap-2">
@@ -333,6 +365,8 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
                                 <Toggle label="동코안 채널" value={chartConfig.showDC} onToggle={() => setChartConfig(c => ({ ...c, showDC: !c.showDC }))} />
                                 <Toggle label="일목균형표" value={chartConfig.showIchimoku} onToggle={() => setChartConfig(c => ({ ...c, showIchimoku: !c.showIchimoku }))} />
                                 <Toggle label="VWAP" value={chartConfig.showVWAP} onToggle={() => setChartConfig(c => ({ ...c, showVWAP: !c.showVWAP }))} />
+                                <Toggle label="피벗 포인트" value={chartConfig.showPivot} onToggle={() => setChartConfig(c => ({ ...c, showPivot: !c.showPivot }))} />
+                                <Toggle label="파라볼릭 SAR" value={chartConfig.showSAR} onToggle={() => setChartConfig(c => ({ ...c, showSAR: !c.showSAR }))} />
                                 <Toggle label="AI 패턴/타점" value={chartConfig.showAIQuotes} onToggle={() => setChartConfig(c => ({ ...c, showAIQuotes: !c.showAIQuotes }))} />
                             </div>
                         </div>
@@ -368,3 +402,13 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
         </div>
     );
 };
+
+// Toggle 컴포넌트를 외부로 분리 (성능 최적화 및 린트 에러 해결)
+const Toggle = ({ label, value, onToggle }) => (
+    <div onClick={onToggle} className="flex items-center justify-between p-2 hover:bg-slate-700/50 rounded cursor-pointer">
+        <span className="text-xs text-slate-300">{label}</span>
+        <div className={`w-9 h-5 rounded-full transition ${value ? 'bg-blue-500' : 'bg-slate-600'} relative`}>
+            <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${value ? 'left-4' : 'left-0.5'}`} />
+        </div>
+    </div>
+);

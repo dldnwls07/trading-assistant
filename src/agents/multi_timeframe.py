@@ -13,6 +13,7 @@ import yfinance as yf
 
 from src.agents.analyst import StockAnalyst
 from src.agents.pattern_detector import AdvancedPatternDetector
+from src.data.collector import MarketDataCollector
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class MultiTimeframeAnalyzer:
     def __init__(self):
         self.analyst = StockAnalyst()
         self.pattern_detector = AdvancedPatternDetector()
+        self.collector = MarketDataCollector()
     
     def analyze_all_timeframes(self, 
                                ticker: str,
@@ -692,11 +694,19 @@ class MultiTimeframeAnalyzer:
         return "\n".join(lines)
     
     def _fetch_data(self, ticker: str, period: str, interval: str) -> Optional[pd.DataFrame]:
-        """데이터 수집"""
+        """MarketDataCollector를 통한 데이터 수집 (한국 주식 대응)"""
         try:
-            stock = yf.Ticker(ticker)
-            df = stock.history(period=period, interval=interval)
-            return df if not df.empty else None
+            # interval 정규화 (yf와 collector 간 차이 조정)
+            if interval == "1h": interval = "60m"
+            
+            df = self.collector.get_ohlcv(ticker, period=period, interval=interval)
+            
+            # 인덱스를 Datetime으로 설정 (패턴 감정 등에서 필요)
+            if df is not None and not df.empty:
+                if 'Date' in df.columns:
+                    df.set_index(pd.to_datetime(df['Date']), inplace=True)
+                return df
+            return None
         except Exception as e:
             logger.warning(f"{ticker} 데이터 수집 실패 ({period}/{interval}): {e}")
             return None

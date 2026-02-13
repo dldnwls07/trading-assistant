@@ -4,10 +4,11 @@ import { X, Globe, Moon, Sun, Bell, Shield, Settings } from 'lucide-react';
 import { useTranslation } from '../utils/translations';
 
 const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
+    const t = useTranslation(settings);
+
     if (!isOpen) return null;
 
     const isDark = settings?.darkMode;
-    const t = useTranslation(settings);
 
     const languages = [
         { code: 'ko', name: '한국어', icon: '🇰🇷' },

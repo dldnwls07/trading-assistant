@@ -165,31 +165,63 @@ class PortfolioAnalyzer:
             return None
     
     def _calculate_correlations(self, tickers: List[str]) -> Dict[str, Any]:
-        """종목 간 상관관계 계산"""
-        if len(tickers) < 2:
-            return {"matrix": {}, "avg_correlation": 0}
+        """종목 간 상관관계 계산 및 전문가용 리스크 지표(Beta, Sharpe) 산출"""
+        if not tickers:
+            return {"matrix": {}, "avg_correlation": 0, "beta": 1.0, "sharpe": 0}
             
         try:
             import yfinance as yf
-            # 최근 6개월 데이터 수집
-            data = yf.download(tickers, period="6mo")['Close']
+            # 시장 지수(^GSPC)를 포함하여 최근 1년 데이터 수집
+            all_tickers = list(set(tickers + ["^GSPC"]))
+            data = yf.download(all_tickers, period="1y")['Close']
+            
+            # yf.download 결과가 DataFrame인지 Series인지 확인
+            if isinstance(data, pd.Series):
+                data = data.to_frame()
+                
             returns = data.pct_change().dropna()
             
-            corr_matrix = returns.corr()
+            if returns.empty:
+                return {"matrix": {}, "avg_correlation": 0, "beta": 1.0, "sharpe": 0}
+
+            # 1. 상관관계 매트릭스 (보유 종목들만)
+            valid_tickers = [t for t in tickers if t in returns.columns]
+            if len(valid_tickers) > 1:
+                corr_matrix = returns[valid_tickers].corr()
+                avg_corr = (corr_matrix.sum().sum() - len(valid_tickers)) / (len(valid_tickers)**2 - len(valid_tickers))
+            else:
+                corr_matrix = pd.DataFrame()
+                avg_corr = 1.0
             
-            # JSON 직렬화 가능하도록 변환
-            matrix_dict = corr_matrix.to_dict()
+            # 2. 베타(Beta) 및 샤프 지수(Sharpe) 계산
+            beta = 1.0
+            sharpe = 0
             
-            # 평균 상관계수 (자기 자신 제외)
-            avg_corr = (corr_matrix.sum().sum() - len(tickers)) / (len(tickers)**2 - len(tickers))
-            
+            if "^GSPC" in returns.columns and valid_tickers:
+                # 포트폴리오 수익률 (동일 비중 가정)
+                port_returns = returns[valid_tickers].mean(axis=1)
+                market_returns = returns["^GSPC"]
+                
+                # 베타 계산
+                covariance = np.cov(port_returns, market_returns)[0][1]
+                market_variance = np.var(market_returns)
+                beta = covariance / market_variance if market_variance != 0 else 1.0
+                
+                # 샤프 지수 계산 (연율화, 무위험 수익률 3.5% 가정)
+                risk_free_rate = 0.035 / 252
+                excess_returns = port_returns - risk_free_rate
+                if np.std(excess_returns) != 0:
+                    sharpe = (np.mean(excess_returns) / np.std(excess_returns)) * np.sqrt(252)
+
             return {
-                "matrix": matrix_dict,
-                "avg_correlation": round(avg_corr, 3)
+                "matrix": corr_matrix.to_dict() if not corr_matrix.empty else {},
+                "avg_correlation": round(float(avg_corr), 3),
+                "beta": round(float(beta), 2),
+                "sharpe": round(float(sharpe), 2)
             }
         except Exception as e:
-            logger.error(f"상관관계 계산 실패: {e}")
-            return {"matrix": {}, "avg_correlation": 0.5}
+            logger.error(f"리스크 지표 계산 실패: {e}")
+            return {"matrix": {}, "avg_correlation": 0.5, "beta": 1.0, "sharpe": 0}
 
     def _evaluate_diversification(self, holdings: List[Dict[str, Any]], correlations: Dict[str, Any]) -> Dict[str, Any]:
         """분산도 평가 (섹터 집중도 + 상관관계 반영)"""

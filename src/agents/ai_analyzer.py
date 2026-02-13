@@ -96,6 +96,8 @@ class AIAnalyzer:
         }
         persona = lang_map.get(lang, lang_map["ko"])
 
+        scenarios = analysis_data.get("price_scenarios", {})
+        
         prompt = f"""You are a {persona} with 15 years of experience.
 Analyze following 30+ precision data points and generate a strategic report in {lang}.
 Do NOT just list the data. INTERPRET them and JUDGE what is most critical.
@@ -110,12 +112,17 @@ Do NOT just list the data. INTERPRET them and JUDGE what is most critical.
 4. Fundamentals: {fund.get('summary', 'N/A')}, Market Cap {events.get('market_cap', 'N/A')}, Sector {events.get('sector', 'N/A')}
 5. Macro/Sentiment: Correlation {macro.get('score', 'N/A')}, OBV energy {vol_price.get('score', 'N/A')}, Psychological disparity {psych.get('score', 'N/A')}
 6. Patterns: {len(patterns)} patterns detected. {patterns[0]['name'] if patterns else 'None'}
+7. Future Events & Scenarios: 
+   - Upcoming Events: {events.get('earnings_date', 'N/A')}, Ex-Div {events.get('ex_dividend_date', 'N/A')}
+   - Bearish Scenario: {scenarios.get('bearish', 'N/A')}
+   - Bullish Scenario: {scenarios.get('bullish', 'N/A')}
 
 Instructions:
-1. 'Critical Insight': Pick the TOP 3 most important indicators among these and explain WHY they are critical now.
-2. 'Data Conflict?': If indicators conflict (e.g. short-term overbought but long-term accumulation), solve the logic and tell the user.
-3. 'Trading Plan': Give precise Entry/Target points based on the consensus: {consensus.get('consensus', 'N/A')}.
-4. 'Risk Alert': What is the 1 thing the user must watch out for today?
+1. 'Critical Insight': Pick the TOP 3 most important indicators.
+2. 'Event Impact': Analyze how the upcoming events (if any) might change the current trend.
+3. 'Scenario Planning': Based on the Bearish/Bullish scenarios provided, give specific advice for both cases.
+4. 'Trading Plan': Give precise Entry/Target points based on the consensus.
+5. 'Risk Alert': What is the single biggest risk today?
 
 Write in a professional, decisive tone in {lang}."""
 
@@ -198,10 +205,12 @@ Write in a professional, decisive tone in {lang}."""
             if vol_data:
                 report.append(f"   • 변동성: {vol_data.get('interpretation', 'N/A')}")
             
-            rsi = sh_full.get('rsi', 0)
-            if rsi:
+            rsi = sh_full.get('rsi')
+            if rsi is not None:
                 rsi_status = "과매수" if rsi > 70 else "과매도" if rsi < 30 else "중립"
                 report.append(f"   • RSI(14): {rsi:.1f} ({rsi_status})")
+            else:
+                report.append(f"   • RSI(14): 분석 중/중립 (50.0)")
             
             entry = short.get('entry_points', {})
             if entry:

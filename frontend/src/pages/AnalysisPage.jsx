@@ -1,22 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StockChart } from '../components/StockChart';
-import SettingsModal from '../components/SettingsModal';
 import {
     Search,
     Zap,
     Activity,
-    Settings,
     Star,
-    TrendingUp,
     Clock,
     BarChart3,
     Eye,
     ChevronRight,
     MessageSquare
 } from 'lucide-react';
+import HelpTooltip from '../components/HelpTooltip';
 import { useTranslation } from '../utils/translations';
 
 const API_BASE = 'http://127.0.0.1:8000';
@@ -200,11 +198,17 @@ const AnalysisPage = ({ settings }) => {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className={`p-8 rounded-3xl border shadow-xl flex flex-col items-center justify-center relative overflow-hidden transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
                         <div className="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
-                        <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2 px-3 py-1 bg-blue-500/5 rounded-full">{t.ana_ai_score}</span>
+                        <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2 px-3 py-1 bg-blue-500/5 rounded-full flex items-center gap-1">
+                            {t.ana_ai_score}
+                            <HelpTooltip indicatorId="Sharpe Ratio" title="AI 신뢰도 점수" isDark={isDark} />
+                        </span>
                         <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-blue-400 to-blue-600 drop-shadow-sm">{analysis?.final_score || '--'}</div>
                     </div>
                     <div className={`p-8 rounded-3xl border shadow-xl flex flex-col items-center justify-center transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
-                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Engine Signal</span>
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1">
+                            Engine Signal
+                            <HelpTooltip indicatorId="RSI" title="매매 강도 지표" isDark={isDark} />
+                        </span>
                         <div className={`text-xl font-black px-6 py-2 rounded-2xl border-2 italic shadow-sm ${analysis?.signal?.includes('매수') ? 'bg-green-500/10 text-green-500 border-green-500/20' : analysis?.signal?.includes('매도') ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-blue-500/5 text-blue-500 border-blue-500/10'}`}>
                             {analysis?.signal || 'Thinking...'}
                         </div>
@@ -215,27 +219,59 @@ const AnalysisPage = ({ settings }) => {
                             <div className="flex items-center gap-1.5 opacity-30">
                                 <Star className="w-3.5 h-3.5 fill-current" />
                                 <span className="text-[10px] font-black uppercase">Alpha Strategy</span>
+                                <HelpTooltip indicatorId="Pivot Points" title="피벗 포인트 전략" isDark={isDark} />
                             </div>
                         </div>
-                        <div className="flex justify-around items-center">
+                        <div className="flex justify-around items-center mb-8">
                             <div className="text-center group">
-                                <p className="text-[10px] text-rose-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">{t.ana_stop_loss}</p>
+                                <p className="text-[10px] text-rose-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform flex items-center justify-center gap-1">
+                                    {t.ana_stop_loss}
+                                    <HelpTooltip indicatorId="Support & Resistance" title="손절 기준" isDark={isDark} />
+                                </p>
                                 <p className="text-xl font-black opacity-90">
                                     {analysis?.[`${selectedView}_term`]?.entry_points?.stop_loss?.toLocaleString() || '--'}
                                 </p>
                             </div>
                             <div className={`h-12 w-px ${isDark ? 'bg-slate-800' : 'bg-gray-100'}`} />
                             <div className="text-center group">
-                                <p className="text-[10px] text-blue-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">{t.ana_entry_zone}</p>
+                                <p className="text-[10px] text-blue-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform flex items-center justify-center gap-1">
+                                    {t.ana_entry_zone}
+                                    <HelpTooltip indicatorId="Bollinger Bands" title="추천 진입 구간" isDark={isDark} />
+                                </p>
                                 <p className="text-3xl font-black text-blue-600 shadow-blue-500/10 drop-shadow-sm">
                                     {analysis?.[`${selectedView}_term`]?.entry_points?.buy_zone?.[0]?.price?.toLocaleString() || '--'}
                                 </p>
                             </div>
                             <div className={`h-12 w-px ${isDark ? 'bg-slate-800' : 'bg-gray-100'}`} />
                             <div className="text-center group">
-                                <p className="text-[10px] text-emerald-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform">{t.ana_take_profit}</p>
+                                <p className="text-[10px] text-emerald-500 font-black uppercase mb-1 tracking-tighter group-hover:scale-110 transition-transform flex items-center justify-center gap-1">
+                                    {t.ana_take_profit}
+                                    <HelpTooltip indicatorId="Support & Resistance" title="목표 수익 구간" isDark={isDark} />
+                                </p>
                                 <p className="text-xl font-black opacity-90">
                                     {analysis?.[`${selectedView}_term`]?.entry_points?.take_profit?.toLocaleString() || '--'}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Price Scenarios */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 pt-6 border-t border-dashed border-gray-200 dark:border-slate-800">
+                            <div className={`p-4 rounded-2xl ${isDark ? 'bg-red-500/5 border border-red-500/10' : 'bg-red-50 border border-red-100'}`}>
+                                <p className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2 mb-2">
+                                    Bearish Scenario (Support Break)
+                                    <HelpTooltip indicatorId="Support & Resistance" title="하락 시나리오" isDark={isDark} />
+                                </p>
+                                <p className="text-xs font-medium opacity-80 leading-relaxed">
+                                    {analysis?.price_scenarios?.bearish || "Calculated based on volatility..."}
+                                </p>
+                            </div>
+                            <div className={`p-4 rounded-2xl ${isDark ? 'bg-green-500/5 border border-green-500/10' : 'bg-green-50 border border-green-100'}`}>
+                                <p className="text-[10px] font-black text-green-500 uppercase flex items-center gap-2 mb-2">
+                                    Bullish Scenario (Resist Break)
+                                    <HelpTooltip indicatorId="Support & Resistance" title="상승 시나리오" isDark={isDark} />
+                                </p>
+                                <p className="text-xs font-medium opacity-80 leading-relaxed">
+                                    {analysis?.price_scenarios?.bullish || "Calculated based on momentum..."}
                                 </p>
                             </div>
                         </div>
@@ -356,6 +392,7 @@ const AnalysisPage = ({ settings }) => {
                                     <p className="text-[10px] text-gray-400 mb-2 uppercase tracking-widest flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
                                         Technical Paradigm
+                                        <HelpTooltip indicatorId="AI Score" title="기술적 분석 관점" isDark={isDark} />
                                     </p>
                                     <p className="text-sm opacity-80">{analysis?.[`${selectedView}_term`]?.focus_areas || "Calculating structural bias..."}</p>
                                 </div>
@@ -363,6 +400,7 @@ const AnalysisPage = ({ settings }) => {
                                     <p className="text-[10px] text-gray-400 mb-2 uppercase tracking-widest flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
                                         Optimized Horizon
+                                        <HelpTooltip indicatorId="SMA" title="최적 보유 기간" isDark={isDark} />
                                     </p>
                                     <p className="text-sm opacity-80">{analysis?.[`${selectedView}_term`]?.holding_period || "Estimating time decay..."}</p>
                                 </div>
