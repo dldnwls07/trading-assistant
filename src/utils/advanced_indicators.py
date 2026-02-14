@@ -8,18 +8,56 @@ class AdvancedIndicators:
     
     @staticmethod
     def calculate_all(df: pd.DataFrame) -> pd.DataFrame:
-        """모든 지표 계산"""
+        """모든 지표 계산 - 카테고리별 최적화 및 신규 지표 추가"""
         calc = df.copy()
         
-        # === 이동평균선 (SMA) ===
-        for period in [5, 10, 20, 50, 60, 100, 120, 200]:
+        # === 1. 추세 지표 (Trend) ===
+        # 이동평균선 (SMA): 표준 주기 중심 (5, 20, 50, 200)
+        for period in [5, 20, 50, 200]:
             calc[f'sma_{period}'] = calc['Close'].rolling(window=period).mean()
         
-        # === 지수이동평균 (EMA) ===
-        for period in [9, 12, 20, 26, 50, 200]:
+        # 지수이동평균 (EMA): 시그널 위주 (9, 20, 50)
+        for period in [9, 20, 50]:
             calc[f'ema_{period}'] = calc['Close'].ewm(span=period, adjust=False).mean()
         
-        # === 볼린저 밴드 ===
+        # Supertrend (New): 초보자도 쉽게 추 판단 가능
+        st_df = AdvancedIndicators._supertrend(calc)
+        calc = pd.concat([calc, st_df], axis=1)
+        
+        # 일목균형표
+        calc['ichimoku_tenkan'] = (calc['High'].rolling(9).max() + calc['Low'].rolling(9).min()) / 2
+        calc['ichimoku_kijun'] = (calc['High'].rolling(26).max() + calc['Low'].rolling(26).min()) / 2
+        calc['ichimoku_senkou_a'] = ((calc['ichimoku_tenkan'] + calc['ichimoku_kijun']) / 2).shift(26)
+        calc['ichimoku_senkou_b'] = ((calc['High'].rolling(52).max() + calc['Low'].rolling(52).min()) / 2).shift(26)
+        
+        # === 2. 모멘텀 지표 (Momentum) ===
+        # RSI: 표준 14일
+        calc['rsi'] = AdvancedIndicators._rsi(calc, 14)
+        
+        # MACD
+        exp12 = calc['Close'].ewm(span=12, adjust=False).mean()
+        exp26 = calc['Close'].ewm(span=26, adjust=False).mean()
+        calc['MACD'] = exp12 - exp26
+        calc['Signal'] = calc['MACD'].ewm(span=9, adjust=False).mean()
+        calc['Hist'] = calc['MACD'] - calc['Signal']
+        
+        # 스토캐스틱
+        low14 = calc['Low'].rolling(14).min()
+        high14 = calc['High'].rolling(14).max()
+        calc['stoch_k'] = 100 * ((calc['Close'] - low14) / (high14 - low14))
+        calc['stoch_d'] = calc['stoch_k'].rolling(3).mean()
+        
+        # CCI
+        tp = (calc['High'] + calc['Low'] + calc['Close']) / 3
+        sma_tp = tp.rolling(20).mean()
+        mad = tp.rolling(20).apply(lambda x: np.abs(x - x.mean()).mean())
+        calc['cci'] = (tp - sma_tp) / (0.015 * mad)
+        
+        # Williams %R
+        calc['williams_r'] = -100 * ((high14 - calc['Close']) / (high14 - low14))
+        
+        # === 3. 변동성 지표 (Volatility) ===
+        # 볼린저 밴드
         sma20 = calc['Close'].rolling(20).mean()
         std20 = calc['Close'].rolling(20).std()
         calc['bb_upper'] = sma20 + (std20 * 2)
@@ -27,55 +65,41 @@ class AdvancedIndicators:
         calc['bb_lower'] = sma20 - (std20 * 2)
         calc['bb_width'] = (calc['bb_upper'] - calc['bb_lower']) / calc['bb_middle'] * 100
         
-        # === 켈트너 채널 ===
+        # 켈트너 채널
         ema20 = calc['Close'].ewm(span=20, adjust=False).mean()
         atr = AdvancedIndicators._atr(calc, 20)
         calc['kc_upper'] = ema20 + (atr * 2)
         calc['kc_middle'] = ema20
         calc['kc_lower'] = ema20 - (atr * 2)
         
-        # === 동코안 채널 ===
+        # 동코안 채널
         calc['dc_upper'] = calc['High'].rolling(20).max()
         calc['dc_lower'] = calc['Low'].rolling(20).min()
         calc['dc_middle'] = (calc['dc_upper'] + calc['dc_lower']) / 2
         
-        # === 일목균형표 ===
-        calc['ichimoku_tenkan'] = (calc['High'].rolling(9).max() + calc['Low'].rolling(9).min()) / 2
-        calc['ichimoku_kijun'] = (calc['High'].rolling(26).max() + calc['Low'].rolling(26).min()) / 2
-        calc['ichimoku_senkou_a'] = ((calc['ichimoku_tenkan'] + calc['ichimoku_kijun']) / 2).shift(26)
-        calc['ichimoku_senkou_b'] = ((calc['High'].rolling(52).max() + calc['Low'].rolling(52).min()) / 2).shift(26)
-        
-        # === RSI ===
-        calc['rsi'] = AdvancedIndicators._rsi(calc, 14)
-        calc['rsi_9'] = AdvancedIndicators._rsi(calc, 9)
-        calc['rsi_25'] = AdvancedIndicators._rsi(calc, 25)
-        
-        # === MACD ===
-        exp12 = calc['Close'].ewm(span=12, adjust=False).mean()
-        exp26 = calc['Close'].ewm(span=26, adjust=False).mean()
-        calc['MACD'] = exp12 - exp26
-        calc['Signal'] = calc['MACD'].ewm(span=9, adjust=False).mean()
-        calc['Hist'] = calc['MACD'] - calc['Signal']
-        
-        # === 스토캐스틱 ===
-        low14 = calc['Low'].rolling(14).min()
-        high14 = calc['High'].rolling(14).max()
-        calc['stoch_k'] = 100 * ((calc['Close'] - low14) / (high14 - low14))
-        calc['stoch_d'] = calc['stoch_k'].rolling(3).mean()
-        
-        # === CCI ===
-        tp = (calc['High'] + calc['Low'] + calc['Close']) / 3
-        sma_tp = tp.rolling(20).mean()
-        mad = tp.rolling(20).apply(lambda x: np.abs(x - x.mean()).mean())
-        calc['cci'] = (tp - sma_tp) / (0.015 * mad)
-        
-        # === Williams %R ===
-        high14 = calc['High'].rolling(14).max()
-        low14 = calc['Low'].rolling(14).min()
-        calc['williams_r'] = -100 * ((high14 - calc['Close']) / (high14 - low14))
-        
-        # === ADX ===
+        # ATR (전체 공용)
         calc['atr'] = AdvancedIndicators._atr(calc, 14)
+        
+        # === 4. 거래량 및 기타 (Volume & Others) ===
+        # OBV
+        calc['obv'] = (np.sign(calc['Close'].diff()) * calc['Volume']).fillna(0).cumsum()
+        
+        # MFI
+        tp = (calc['High'] + calc['Low'] + calc['Close']) / 3
+        mf = tp * calc['Volume']
+        pos_mf = mf.where(tp > tp.shift(), 0).rolling(14).sum()
+        neg_mf = mf.where(tp < tp.shift(), 0).rolling(14).sum()
+        calc['mfi'] = 100 - (100 / (1 + pos_mf / neg_mf))
+        
+        # VWAP
+        calc['vwap'] = (tp * calc['Volume']).cumsum() / calc['Volume'].cumsum()
+        
+        # CMF
+        mfm = ((calc['Close'] - calc['Low']) - (calc['High'] - calc['Close'])) / (calc['High'] - calc['Low'])
+        mfv = mfm * calc['Volume']
+        calc['cmf'] = mfv.rolling(20).sum() / calc['Volume'].rolling(20).sum()
+        
+        # ADX
         high_diff = calc['High'].diff()
         low_diff = -calc['Low'].diff()
         plus_dm = high_diff.where((high_diff > low_diff) & (high_diff > 0), 0)
@@ -86,56 +110,56 @@ class AdvancedIndicators:
         calc['adx'] = dx.rolling(14).mean()
         calc['plus_di'] = plus_di
         calc['minus_di'] = minus_di
-        
-        # === OBV ===
-        calc['obv'] = (np.sign(calc['Close'].diff()) * calc['Volume']).fillna(0).cumsum()
-        
-        # === MFI ===
-        tp = (calc['High'] + calc['Low'] + calc['Close']) / 3
-        mf = tp * calc['Volume']
-        pos_mf = mf.where(tp > tp.shift(), 0).rolling(14).sum()
-        neg_mf = mf.where(tp < tp.shift(), 0).rolling(14).sum()
-        calc['mfi'] = 100 - (100 / (1 + pos_mf / neg_mf))
-        
-        # === Pivot Points & Parabolic SAR ===
+
+        # Pivot Points
         pivots = AdvancedIndicators._pivot_points(calc)
-        # Pivot DataFrame의 컬럼들을 원본 calc에 병합
         calc = pd.concat([calc, pivots], axis=1)
         
+        # Parabolic SAR
         calc['parabolic_sar'] = AdvancedIndicators._parabolic_sar(calc)
-
-        # === VWAP ===
-        tp = (calc['High'] + calc['Low'] + calc['Close']) / 3
-        calc['vwap'] = (tp * calc['Volume']).cumsum() / calc['Volume'].cumsum()
-        
-        # === CMF ===
-        mfm = ((calc['Close'] - calc['Low']) - (calc['High'] - calc['Close'])) / (calc['High'] - calc['Low'])
-        mfv = mfm * calc['Volume']
-        calc['cmf'] = mfv.rolling(20).sum() / calc['Volume'].rolling(20).sum()
-        
-        # === ROC ===
-        calc['roc'] = ((calc['Close'] - calc['Close'].shift(12)) / calc['Close'].shift(12)) * 100
-        
-        # === Momentum ===
-        calc['momentum'] = calc['Close'] - calc['Close'].shift(10)
-        
-        # === Aroon ===
-        calc['aroon_up'] = calc['High'].rolling(25).apply(lambda x: x.argmax()) / 25 * 100
-        calc['aroon_down'] = calc['Low'].rolling(25).apply(lambda x: x.argmin()) / 25 * 100
-        calc['aroon_osc'] = calc['aroon_up'] - calc['aroon_down']
-        
-        # === TSI (True Strength Index) ===
-        momentum = calc['Close'].diff()
-        ema25_momentum = momentum.ewm(span=25, adjust=False).mean()
-        ema13_ema25 = ema25_momentum.ewm(span=13, adjust=False).mean()
-        ema25_abs = momentum.abs().ewm(span=25, adjust=False).mean()
-        ema13_ema25_abs = ema25_abs.ewm(span=13, adjust=False).mean()
-        calc['tsi'] = 100 * (ema13_ema25 / ema13_ema25_abs)
-        
-        # === Ultimate Oscillator ===
-        calc['uo'] = AdvancedIndicators._ultimate_oscillator(calc)
         
         return calc
+
+    @staticmethod
+    def _supertrend(df: pd.DataFrame, period: int = 10, multiplier: float = 3.0) -> pd.DataFrame:
+        """Supertrend 지표 (추세 반전 포착용)"""
+        hl2 = (df['High'] + df['Low']) / 2
+        atr = AdvancedIndicators._atr(df, period)
+        
+        upperband = hl2 + (multiplier * atr)
+        lowerband = hl2 - (multiplier * atr)
+        
+        final_upperband = upperband.copy()
+        final_lowerband = lowerband.copy()
+        supertrend = pd.Series(0.0, index=df.index)
+        direction = pd.Series(1, index=df.index) # 1: Up, -1: Down
+        
+        # 벡터화가 어려워 순차 계산
+        for i in range(1, len(df)):
+            # Upper Band 계산
+            if upperband.iloc[i] < final_upperband.iloc[i-1] or df['Close'].iloc[i-1] > final_upperband.iloc[i-1]:
+                final_upperband.iloc[i] = upperband.iloc[i]
+            else:
+                final_upperband.iloc[i] = final_upperband.iloc[i-1]
+                
+            # Lower Band 계산
+            if lowerband.iloc[i] > final_lowerband.iloc[i-1] or df['Close'].iloc[i-1] < final_lowerband.iloc[i-1]:
+                final_lowerband.iloc[i] = lowerband.iloc[i]
+            else:
+                final_lowerband.iloc[i] = final_lowerband.iloc[i-1]
+                
+            # Trend 결정
+            if direction.iloc[i-1] == 1:
+                direction.iloc[i] = -1 if df['Close'].iloc[i] <= final_upperband.iloc[i] else 1
+            else:
+                direction.iloc[i] = 1 if df['Close'].iloc[i] >= final_lowerband.iloc[i] else -1
+                
+            supertrend.iloc[i] = final_lowerband.iloc[i] if direction.iloc[i] == 1 else final_upperband.iloc[i]
+            
+        return pd.DataFrame({
+            'supertrend': supertrend,
+            'supertrend_direction': direction
+        }, index=df.index)
     
     @staticmethod
     def _pivot_points(df: pd.DataFrame) -> pd.DataFrame:

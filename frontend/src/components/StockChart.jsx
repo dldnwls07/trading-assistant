@@ -10,48 +10,43 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
 
     // === 전문가급 지표 설정 (30개 이상) ===
     const [chartConfig, setChartConfig] = useState({
-        // 상단 지표 (Overlay)
+        // 1. 추세 지표 (Trend)
         showSMA5: true,
-        showSMA10: false,
         showSMA20: true,
         showSMA50: false,
-        showSMA60: false,
-        showSMA100: false,
-        showSMA120: false,
         showSMA200: false,
         showEMA9: false,
-        showEMA12: false,
         showEMA20: false,
-        showEMA26: false,
         showEMA50: false,
-        showEMA200: false,
+        showSupertrend: true,
+        showTrendCloud: true, // NEW: 시각적 추세 구름
+        showIchimoku: false,
+        showSAR: false,
+        showVWAP: false,
+
+        // 2. 변동성 지표 (Volatility)
         showBB: true,
         showKC: false,
         showDC: false,
-        showIchimoku: false,
-        showVWAP: false,
-        showPivot: false,
-        showSAR: false,
-        showAIQuotes: true,
 
-        // 하단 지표 (Oscillators)
-        showVolume: true,
+        // 3. 모멘텀 지표 (Momentum)
         showRSI: false,
-        showRSI9: false,
-        showRSI25: false,
         showMACD: false,
         showStochastic: false,
         showCCI: false,
         showWilliamsR: false,
-        showADX: false,
+
+        // 4. 거래량 및 기타 (Volume & Others)
+        showVolume: true,
         showOBV: false,
         showMFI: false,
         showCMF: false,
-        showROC: false,
-        showMomentum: false,
-        showAroon: false,
-        showTSI: false,
-        showUO: false,
+        showVWAP_Vol: false, // VWAP is technically trend but often grouped with volume
+
+        // AI 전용
+        showAIQuotes: true,
+        showPivot: false,
+        showADX: false,
         showATR: false,
     });
 
@@ -143,17 +138,14 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
 
             // === 상단 지표 (Overlay Indicators) ===
             const overlayColors = {
-                sma_5: '#facc15', sma_10: '#fb923c', sma_20: '#ec4899', sma_50: '#a855f7',
-                sma_60: '#3b82f6', sma_100: '#06b6d4', sma_120: '#8b5cf6', sma_200: '#10b981',
-                ema_9: '#fbbf24', ema_12: '#f97316', ema_20: '#f43f5e', ema_26: '#c026d3',
-                ema_50: '#8b5cf6', ema_200: '#059669'
+                sma_5: '#facc15', sma_20: '#ec4899', sma_50: '#a855f7', sma_200: '#10b981',
+                ema_9: '#fbbf24', ema_20: '#f43f5e', ema_50: '#8b5cf6', supertrend: '#10b981'
             };
 
+            // SMA/EMA 처리
             Object.entries({
-                showSMA5: 'sma_5', showSMA10: 'sma_10', showSMA20: 'sma_20', showSMA50: 'sma_50',
-                showSMA60: 'sma_60', showSMA100: 'sma_100', showSMA120: 'sma_120', showSMA200: 'sma_200',
-                showEMA9: 'ema_9', showEMA12: 'ema_12', showEMA20: 'ema_20', showEMA26: 'ema_26',
-                showEMA50: 'ema_50', showEMA200: 'ema_200'
+                showSMA5: 'sma_5', showSMA20: 'sma_20', showSMA50: 'sma_50', showSMA200: 'sma_200',
+                showEMA9: 'ema_9', showEMA20: 'ema_20', showEMA50: 'ema_50'
             }).forEach(([configKey, dataKey]) => {
                 if (chartConfig[configKey]) {
                     const series = chart.addSeries(LineSeries, {
@@ -164,6 +156,38 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
                     series.setData(finalData.filter(d => d[dataKey]).map(d => ({ time: d.time, value: d[dataKey] })));
                 }
             });
+
+            // Supertrend (NEW)
+            if (chartConfig.showSupertrend) {
+                const stSeries = chart.addSeries(LineSeries, {
+                    lineWidth: 2,
+                    title: 'Supertrend'
+                });
+
+                // direction에 따라 색상 분리 처리 (그라데이션이나 영역 채우기는 lightweight-charts 사양상 직접 지원이 까다로워 선 색상 변경 위주)
+                stSeries.setData(finalData.filter(d => d.supertrend).map(d => ({
+                    time: d.time,
+                    value: d.supertrend,
+                    color: d.supertrend_direction === 1 ? '#10b981' : '#f43f5e'
+                })));
+            }
+
+            // Trend Cloud (NEW: EMA20 & SMA50 사이의 구름 효과)
+            if (chartConfig.showTrendCloud) {
+                const cloudSeries = chart.addSeries(LineSeries, {
+                    color: 'rgba(59, 130, 246, 0.1)',
+                    lineWidth: 0,
+                    title: 'Trend Cloud'
+                });
+
+                // 추세 구름은 EMA20과 SMA50 사이를 채우는 효과 (여기서는 단순 상단선으로 표시하거나 여러 선으로 면적 효과)
+                // 정석은 AreaSeries이나 두 지표 사이를 가변적으로 채우기는 어려우므로 EMA20을 기준으로 색상 변화
+                const ema20 = chart.addSeries(LineSeries, { color: 'rgba(16, 185, 129, 0.2)', lineWidth: 1 });
+                const sma50 = chart.addSeries(LineSeries, { color: 'rgba(244, 63, 94, 0.2)', lineWidth: 1 });
+
+                ema20.setData(finalData.filter(d => d.ema_20).map(d => ({ time: d.time, value: d.ema_20 })));
+                sma50.setData(finalData.filter(d => d.sma_50).map(d => ({ time: d.time, value: d.sma_50 })));
+            }
 
             if (chartConfig.showBB) {
                 const bbU = chart.addSeries(LineSeries, { color: 'rgba(148, 163, 184, 0.4)', lineWidth: 1, lineStyle: 2 });
@@ -222,8 +246,6 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
 
             // === Parabolic SAR ===
             if (chartConfig.showSAR) {
-                // SAR은 점으로 표시해야 하므로 LineType을 활용하거나 marker 사용
-                // Lightweight chart 3.8+ 에서는 markers 사용 권장, 여기서는 Scatter 스타일이 없으므로 Small Cross Series로 대체
                 const sarSeries = chart.addSeries(LineSeries, {
                     color: isDark ? '#ffffff' : '#000000',
                     lineWidth: 0,
@@ -233,15 +255,7 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
                     pointMarkerBackgroundColor: isDark ? '#ffffff' : '#000000',
                     title: 'SAR'
                 });
-
-                // lineVisible: false는 lightweigt-charts 버전 버전에 따라 옵션이 다름. 
-                // 여기서는 lineWidth: 0으로 선을 숨기고 마커만 표시 시도
-
                 sarSeries.setData(finalData.filter(d => d.parabolic_sar).map(d => ({ time: d.time, value: d.parabolic_sar })));
-
-                // 만약 위 방법으로 선이 보인다면, markers API를 사용하는 것이 정석임.
-                // 하지만 markers는 시계열 데이터(Series)가 아니라 '이벤트' 마커용임.
-                // 따라서 LineSeries + lineWidth: 0 패턴을 사용.
             }
 
             // === 하단 지표 (Oscillators & Volume) ===
@@ -255,20 +269,10 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
                 })));
             }
 
-            if (chartConfig.showRSI || chartConfig.showRSI9 || chartConfig.showRSI25) {
+            if (chartConfig.showRSI) {
                 const rsiPane = `rsi-pane-${paneIndex}`;
-                if (chartConfig.showRSI) {
-                    const rsi = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1.5, priceScaleId: rsiPane });
-                    rsi.setData(finalData.filter(d => d.rsi).map(d => ({ time: d.time, value: d.rsi })));
-                }
-                if (chartConfig.showRSI9) {
-                    const rsi9 = chart.addSeries(LineSeries, { color: '#fbbf24', lineWidth: 1.5, priceScaleId: rsiPane });
-                    rsi9.setData(finalData.filter(d => d.rsi_9).map(d => ({ time: d.time, value: d.rsi_9 })));
-                }
-                if (chartConfig.showRSI25) {
-                    const rsi25 = chart.addSeries(LineSeries, { color: '#06b6d4', lineWidth: 1.5, priceScaleId: rsiPane });
-                    rsi25.setData(finalData.filter(d => d.rsi_25).map(d => ({ time: d.time, value: d.rsi_25 })));
-                }
+                const rsi = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1.5, priceScaleId: rsiPane });
+                rsi.setData(finalData.filter(d => d.rsi).map(d => ({ time: d.time, value: d.rsi })));
                 chart.priceScale(rsiPane).applyOptions({ scaleMargins: { top: paneIndex, bottom: 0.15 } });
                 paneIndex += 0.15;
             }
@@ -293,7 +297,7 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
                 paneIndex += 0.15;
             }
 
-            ['CCI', 'WilliamsR', 'ADX', 'OBV', 'MFI', 'CMF', 'ROC', 'Momentum', 'TSI', 'UO', 'ATR'].forEach((ind) => {
+            ['CCI', 'WilliamsR', 'ADX', 'OBV', 'MFI', 'CMF', 'ATR'].forEach((ind) => {
                 const configKey = `show${ind}`;
                 const dataKey = ind.toLowerCase().replace('williamsr', 'williams_r');
                 if (chartConfig[configKey]) {
@@ -304,15 +308,6 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
                     paneIndex += 0.15;
                 }
             });
-
-            if (chartConfig.showAroon) {
-                const aroonPane = `aroon-pane-${paneIndex}`;
-                const aroonUp = chart.addSeries(LineSeries, { color: '#10b981', lineWidth: 1.5, priceScaleId: aroonPane });
-                const aroonDown = chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1.5, priceScaleId: aroonPane });
-                aroonUp.setData(finalData.filter(d => d.aroon_up).map(d => ({ time: d.time, value: d.aroon_up })));
-                aroonDown.setData(finalData.filter(d => d.aroon_down).map(d => ({ time: d.time, value: d.aroon_down })));
-                chart.priceScale(aroonPane).applyOptions({ scaleMargins: { top: paneIndex, bottom: 0.15 } });
-            }
 
             chart.timeScale().fitContent();
 
@@ -339,60 +334,71 @@ export const StockChart = ({ data, interval, options = {}, analysis = null }) =>
             </div>
 
             {showSettings && (
-                <div className="absolute top-14 right-2 z-20 bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-2xl w-80 max-h-96 overflow-y-auto">
-                    <h4 className="text-white font-bold mb-3 text-sm">차트 지표 설정</h4>
+                <div className="absolute top-14 right-2 z-20 bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-2xl w-80 max-h-[450px] overflow-y-auto custom-scrollbar">
+                    <h4 className="text-white font-black mb-4 text-sm flex items-center gap-2">
+                        <Settings size={14} />
+                        차트 및 보조지표 개인화
+                    </h4>
 
-                    <div className="space-y-3">
+                    <div className="space-y-5">
+                        {/* 1. 추세 지표 */}
                         <div>
-                            <h5 className="text-slate-400 text-xs mb-2 font-semibold">📈 상단 지표 (Overlay)</h5>
-                            <div className="space-y-1">
-                                <Toggle label="SMA 5" value={chartConfig.showSMA5} onToggle={() => setChartConfig(c => ({ ...c, showSMA5: !c.showSMA5 }))} />
-                                <Toggle label="SMA 10" value={chartConfig.showSMA10} onToggle={() => setChartConfig(c => ({ ...c, showSMA10: !c.showSMA10 }))} />
-                                <Toggle label="SMA 20" value={chartConfig.showSMA20} onToggle={() => setChartConfig(c => ({ ...c, showSMA20: !c.showSMA20 }))} />
-                                <Toggle label="SMA 50" value={chartConfig.showSMA50} onToggle={() => setChartConfig(c => ({ ...c, showSMA50: !c.showSMA50 }))} />
-                                <Toggle label="SMA 60" value={chartConfig.showSMA60} onToggle={() => setChartConfig(c => ({ ...c, showSMA60: !c.showSMA60 }))} />
-                                <Toggle label="SMA 100" value={chartConfig.showSMA100} onToggle={() => setChartConfig(c => ({ ...c, showSMA100: !c.showSMA100 }))} />
-                                <Toggle label="SMA 120" value={chartConfig.showSMA120} onToggle={() => setChartConfig(c => ({ ...c, showSMA120: !c.showSMA120 }))} />
-                                <Toggle label="SMA 200" value={chartConfig.showSMA200} onToggle={() => setChartConfig(c => ({ ...c, showSMA200: !c.showSMA200 }))} />
-                                <Toggle label="EMA 9" value={chartConfig.showEMA9} onToggle={() => setChartConfig(c => ({ ...c, showEMA9: !c.showEMA9 }))} />
-                                <Toggle label="EMA 12" value={chartConfig.showEMA12} onToggle={() => setChartConfig(c => ({ ...c, showEMA12: !c.showEMA12 }))} />
-                                <Toggle label="EMA 20" value={chartConfig.showEMA20} onToggle={() => setChartConfig(c => ({ ...c, showEMA20: !c.showEMA20 }))} />
-                                <Toggle label="EMA 26" value={chartConfig.showEMA26} onToggle={() => setChartConfig(c => ({ ...c, showEMA26: !c.showEMA26 }))} />
-                                <Toggle label="EMA 50" value={chartConfig.showEMA50} onToggle={() => setChartConfig(c => ({ ...c, showEMA50: !c.showEMA50 }))} />
-                                <Toggle label="EMA 200" value={chartConfig.showEMA200} onToggle={() => setChartConfig(c => ({ ...c, showEMA200: !c.showEMA200 }))} />
-                                <Toggle label="볼린저 밴드" value={chartConfig.showBB} onToggle={() => setChartConfig(c => ({ ...c, showBB: !c.showBB }))} />
-                                <Toggle label="켈트너 채널" value={chartConfig.showKC} onToggle={() => setChartConfig(c => ({ ...c, showKC: !c.showKC }))} />
-                                <Toggle label="동코안 채널" value={chartConfig.showDC} onToggle={() => setChartConfig(c => ({ ...c, showDC: !c.showDC }))} />
+                            <h5 className="text-blue-400 text-[10px] mb-2 font-black uppercase tracking-widest flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                                Trend (추세)
+                            </h5>
+                            <div className="space-y-0.5">
+                                <Toggle label="Supertrend (추천)" value={chartConfig.showSupertrend} onToggle={() => setChartConfig(c => ({ ...c, showSupertrend: !c.showSupertrend }))} />
+                                <Toggle label="Trend Cloud (시각화)" value={chartConfig.showTrendCloud} onToggle={() => setChartConfig(c => ({ ...c, showTrendCloud: !c.showTrendCloud }))} />
+                                <Toggle label="SMA 5 / 20 / 50 / 200" value={chartConfig.showSMA20} onToggle={() => setChartConfig(c => ({ ...c, showSMA20: !c.showSMA20, showSMA5: !c.showSMA5 }))} />
                                 <Toggle label="일목균형표" value={chartConfig.showIchimoku} onToggle={() => setChartConfig(c => ({ ...c, showIchimoku: !c.showIchimoku }))} />
+                                <Toggle label="Parabolic SAR" value={chartConfig.showSAR} onToggle={() => setChartConfig(c => ({ ...c, showSAR: !c.showSAR }))} />
                                 <Toggle label="VWAP" value={chartConfig.showVWAP} onToggle={() => setChartConfig(c => ({ ...c, showVWAP: !c.showVWAP }))} />
-                                <Toggle label="피벗 포인트" value={chartConfig.showPivot} onToggle={() => setChartConfig(c => ({ ...c, showPivot: !c.showPivot }))} />
-                                <Toggle label="파라볼릭 SAR" value={chartConfig.showSAR} onToggle={() => setChartConfig(c => ({ ...c, showSAR: !c.showSAR }))} />
-                                <Toggle label="AI 패턴/타점" value={chartConfig.showAIQuotes} onToggle={() => setChartConfig(c => ({ ...c, showAIQuotes: !c.showAIQuotes }))} />
                             </div>
                         </div>
 
-                        <div className="pt-3 border-t border-slate-700">
-                            <h5 className="text-slate-400 text-xs mb-2 font-semibold">📊 하단 지표 (Oscillators)</h5>
-                            <div className="space-y-1">
-                                <Toggle label="거래량" value={chartConfig.showVolume} onToggle={() => setChartConfig(c => ({ ...c, showVolume: !c.showVolume }))} />
-                                <Toggle label="RSI (14)" value={chartConfig.showRSI} onToggle={() => setChartConfig(c => ({ ...c, showRSI: !c.showRSI }))} />
-                                <Toggle label="RSI (9)" value={chartConfig.showRSI9} onToggle={() => setChartConfig(c => ({ ...c, showRSI9: !c.showRSI9 }))} />
-                                <Toggle label="RSI (25)" value={chartConfig.showRSI25} onToggle={() => setChartConfig(c => ({ ...c, showRSI25: !c.showRSI25 }))} />
+                        {/* 2. 변동성 지표 */}
+                        <div>
+                            <h5 className="text-emerald-400 text-[10px] mb-2 font-black uppercase tracking-widest flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                Volatility (변동성)
+                            </h5>
+                            <div className="space-y-0.5">
+                                <Toggle label="볼린저 밴드" value={chartConfig.showBB} onToggle={() => setChartConfig(c => ({ ...c, showBB: !c.showBB }))} />
+                                <Toggle label="켈트너 채널" value={chartConfig.showKC} onToggle={() => setChartConfig(c => ({ ...c, showKC: !c.showKC }))} />
+                                <Toggle label="동코안 채널" value={chartConfig.showDC} onToggle={() => setChartConfig(c => ({ ...c, showDC: !c.showDC }))} />
+                            </div>
+                        </div>
+
+                        {/* 3. 모멘텀 지표 */}
+                        <div>
+                            <h5 className="text-orange-400 text-[10px] mb-2 font-black uppercase tracking-widest flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
+                                Momentum (에너지)
+                            </h5>
+                            <div className="space-y-0.5">
+                                <Toggle label="RSI" value={chartConfig.showRSI} onToggle={() => setChartConfig(c => ({ ...c, showRSI: !c.showRSI }))} />
                                 <Toggle label="MACD" value={chartConfig.showMACD} onToggle={() => setChartConfig(c => ({ ...c, showMACD: !c.showMACD }))} />
                                 <Toggle label="Stochastic" value={chartConfig.showStochastic} onToggle={() => setChartConfig(c => ({ ...c, showStochastic: !c.showStochastic }))} />
-                                <Toggle label="CCI" value={chartConfig.showCCI} onToggle={() => setChartConfig(c => ({ ...c, showCCI: !c.showCCI }))} />
-                                <Toggle label="Williams %R" value={chartConfig.showWilliamsR} onToggle={() => setChartConfig(c => ({ ...c, showWilliamsR: !c.showWilliamsR }))} />
-                                <Toggle label="ADX" value={chartConfig.showADX} onToggle={() => setChartConfig(c => ({ ...c, showADX: !c.showADX }))} />
-                                <Toggle label="OBV" value={chartConfig.showOBV} onToggle={() => setChartConfig(c => ({ ...c, showOBV: !c.showOBV }))} />
-                                <Toggle label="MFI" value={chartConfig.showMFI} onToggle={() => setChartConfig(c => ({ ...c, showMFI: !c.showMFI }))} />
-                                <Toggle label="CMF" value={chartConfig.showCMF} onToggle={() => setChartConfig(c => ({ ...c, showCMF: !c.showCMF }))} />
-                                <Toggle label="ROC" value={chartConfig.showROC} onToggle={() => setChartConfig(c => ({ ...c, showROC: !c.showROC }))} />
-                                <Toggle label="Momentum" value={chartConfig.showMomentum} onToggle={() => setChartConfig(c => ({ ...c, showMomentum: !c.showMomentum }))} />
-                                <Toggle label="Aroon" value={chartConfig.showAroon} onToggle={() => setChartConfig(c => ({ ...c, showAroon: !c.showAroon }))} />
-                                <Toggle label="TSI" value={chartConfig.showTSI} onToggle={() => setChartConfig(c => ({ ...c, showTSI: !c.showTSI }))} />
-                                <Toggle label="Ultimate Osc" value={chartConfig.showUO} onToggle={() => setChartConfig(c => ({ ...c, showUO: !c.showUO }))} />
-                                <Toggle label="ATR" value={chartConfig.showATR} onToggle={() => setChartConfig(c => ({ ...c, showATR: !c.showATR }))} />
                             </div>
+                        </div>
+
+                        {/* 4. 거래량 지표 */}
+                        <div>
+                            <h5 className="text-slate-400 text-[10px] mb-2 font-black uppercase tracking-widest flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
+                                Volume (거래량)
+                            </h5>
+                            <div className="space-y-0.5">
+                                <Toggle label="거래 히스토리" value={chartConfig.showVolume} onToggle={() => setChartConfig(c => ({ ...c, showVolume: !c.showVolume }))} />
+                                <Toggle label="OBV / MFI / CMF" value={chartConfig.showOBV} onToggle={() => setChartConfig(c => ({ ...c, showOBV: !c.showOBV, showMFI: !c.showMFI, showCMF: !c.showCMF }))} />
+                            </div>
+                        </div>
+
+                        {/* 5. 시스템 설정 */}
+                        <div className="pt-3 border-t border-slate-700">
+                            <Toggle label="AI 타점 자동 표시" value={chartConfig.showAIQuotes} onToggle={() => setChartConfig(c => ({ ...c, showAIQuotes: !c.showAIQuotes }))} />
+                            <Toggle label="당일 피벗 라인" value={chartConfig.showPivot} onToggle={() => setChartConfig(c => ({ ...c, showPivot: !c.showPivot }))} />
                         </div>
                     </div>
                 </div>

@@ -13,6 +13,7 @@ import yfinance as yf
 
 from src.agents.analyst import StockAnalyst
 from src.agents.pattern_detector import AdvancedPatternDetector
+from src.agents.ai_analyzer import AIAnalyzer
 from src.data.collector import MarketDataCollector
 
 logger = logging.getLogger(__name__)
@@ -36,8 +37,8 @@ class MultiTimeframeAnalyzer:
         },
         "medium": {
             "name": "중기 (관점: 6개월)",
-            "description": "최근 6개월간의 일봉 기반 추세 분석",
-            "data_period": "6mo",
+            "description": "최근 12개월간의 일봉 기반 추세 분석",
+            "data_period": "1y",
             "data_interval": "1d",  # 일봉
             "holding_period": "3~6개월",
             "focus": "차트 패턴, 이동평균선, 지지/저항"
@@ -55,6 +56,7 @@ class MultiTimeframeAnalyzer:
     def __init__(self):
         self.analyst = StockAnalyst()
         self.pattern_detector = AdvancedPatternDetector()
+        self.ai_analyzer = AIAnalyzer()
         self.collector = MarketDataCollector()
     
     def analyze_all_timeframes(self, 
@@ -99,6 +101,9 @@ class MultiTimeframeAnalyzer:
         
         # 종합 컨센서스 생성
         results["consensus"] = self._generate_consensus(results)
+        
+        # AI 심층 리포트 생성 (Pillar 2)
+        results["ai_report"] = self.ai_analyzer.generate_report(results)
         
         return results
     
@@ -666,10 +671,17 @@ class MultiTimeframeAnalyzer:
             consensus = "💬 시간 프레임 간 신호 불일치 (관망)"
             confidence = 50
         
+        # 앙상블 합치기
+        ensembles = [results[tf]['full_analysis'].get('ensemble') for tf in ["short_term", "medium_term", "long_term"] if results[tf]]
+        global_ensemble = None
+        if ensembles and ensembles[1]: # 중기(Daily) 앙상블을 메인으로 사용
+            global_ensemble = ensembles[1]
+        
         return {
             "consensus": consensus,
             "avg_score": round(avg_score, 1),
             "confidence": confidence,
+            "global_ensemble": global_ensemble,
             "short_signal": results['short_term']['signal'] if results['short_term'] else "N/A",
             "medium_signal": results['medium_term']['signal'] if results['medium_term'] else "N/A",
             "long_signal": results['long_term']['signal'] if results['long_term'] else "N/A",

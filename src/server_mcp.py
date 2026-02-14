@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sys
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 # mcp 라이브러리 (설치 필요: pip install mcp)
@@ -15,6 +16,8 @@ from src.data.collector import MarketDataCollector
 from src.agents.ai_analyzer import AIAnalyzer
 from src.agents.portfolio_analyzer import PortfolioAnalyzer
 from src.agents.screener import StockScreener
+from src.agents.event_calendar import EventCalendar
+from src.data.storage import get_storage
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +32,8 @@ analyst = StockAnalyst()
 ai_analyzer = AIAnalyzer()
 portfolio = PortfolioAnalyzer()
 screener = StockScreener()
+calendar = EventCalendar()
+storage = get_storage()
 
 # ---------------------------------------------------------
 # 🛠️ Tools (AI가 호출할 수 있는 함수들)
@@ -118,6 +123,92 @@ def recommend_stocks(style: str = "balanced") -> str:
         return json.dumps(recs, indent=2)
     except Exception as e:
         return f"Recommendation failed: {str(e)}"
+
+@mcp.tool()
+def set_price_alert(ticker: str, target_price: float, condition: str = "above", note: str = "") -> str:
+    """
+    주식 가격 알림을 설정합니다.
+    Args:
+        ticker: 종목 코드
+        target_price: 목표 가격
+        condition: 'above' (이상) 또는 'below' (이하)
+        note: 간단한 메모
+    """
+    try:
+        alert_id = storage.save_alert(
+            ticker=ticker,
+            alert_type=f"price_{condition}",
+            target_value=target_price,
+            note=note
+        )
+        return f"Alert set successfully (ID: {alert_id})"
+    except Exception as e:
+        return f"Failed to set alert: {str(e)}"
+
+@mcp.tool()
+def check_triggered_alerts() -> str:
+    """
+    설정된 알림들 중 현재 가격에 도달한 알림이 있는지 확인합니다.
+    """
+    try:
+        active_alerts = storage.get_active_alerts()
+        if not active_alerts:
+            return "No active alerts."
+            
+        triggered = []
+        for alert in active_alerts:
+            if alert.alert_type.startswith("price_"):
+                # 실시간 가격 확인
+                df = collector.get_ohlcv(alert.ticker, period="1d", interval="1m")
+                if df is not None and not df.empty:
+                    current_price = df['Close'].iloc[-1]
+                    is_above = "above" in alert.alert_type
+                    
+                    if (is_above and current_price >= alert.target_value) or \
+                       (not is_above and current_price <= alert.target_value):
+                        triggered.append({
+                            "ticker": alert.ticker,
+                            "target": alert.target_value,
+                            "current": current_price,
+                            "note": alert.note,
+                            "condition": alert.alert_type
+                        })
+                        storage.trigger_alert(alert.id)
+                        
+        if not triggered:
+            return "No alerts triggered yet."
+            
+        return json.dumps(triggered, indent=2)
+    except Exception as e:
+        return f"Error checking alerts: {str(e)}"
+
+@mcp.tool()
+def get_today_high_impact_events() -> str:
+    """
+    오늘 예정된 중요 경제 지표 및 이벤트를 조회합니다.
+    """
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        cal_data = calendar.get_calendar(start_date=today, end_date=today)
+        high_impact = [e for e in cal_data['events'] if e['importance'] in ['critical', 'high']]
+        
+        if not high_impact:
+            return "No high impact events today."
+            
+        return json.dumps(high_impact, indent=2)
+    except Exception as e:
+        return f"Failed to get events: {str(e)}"
+
+@mcp.tool()
+def get_market_risk_summary() -> str:
+    """
+    향후 7일간의 시장 리스크 지수와 주요 이벤트를 요약합니다.
+    """
+    try:
+        risk = calendar.calculate_event_risk(days_ahead=7)
+        return json.dumps(risk, indent=2)
+    except Exception as e:
+        return f"Failed to get risk summary: {str(e)}"
 
 # ---------------------------------------------------------
 # 🚀 서버 실행

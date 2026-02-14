@@ -3,6 +3,10 @@ import numpy as np
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from src.agents.event_calendar import EventCalendar
+from src.agents.strategy_ensemble import StrategyEnsemble
+from src.agents.ml_predictor import MLPricePredictor
+from src.utils.backtester import Backtester
 
 logger = logging.getLogger(__name__)
 
@@ -397,10 +401,9 @@ class TechnicalAnalyzer:
         patterns = self.detect_patterns(df)
         if patterns:
             details.append(f"\n🧩 **포착된 차트 패턴**")
-            for p in patterns:
-                reasons.append(p['name'])
-                details.append(f"   • {p['name']}: {p['desc']}")
-                # 패턴 유형에 따른 가중치 부여
+            for p in patterns[:3]:
+                details.append(f"  • {p['name']} ({p['reliability']}/5.0): {p['desc']}")
+                # 패턴 유형에 따른 가중치 부여 (original logic moved here)
                 if p['type'] == "bullish_reversal" or p['type'] == "bullish_continuation":
                     score += 15
                 elif p['type'] == "bearish":
@@ -656,6 +659,8 @@ class StockAnalyst:
         self.macro = MacroAnalyzer()
         self.vol_price = VolumePriceAnalyzer()
         self.psych = PsychologicalAnalyzer()
+        self.calendar = EventCalendar()
+        self.ml_predictor = MLPricePredictor()
         
     def analyze_ticker(self, ticker: str, daily_df: pd.DataFrame, financials: list = None, hourly_df: pd.DataFrame = None, index_df: pd.DataFrame = None, sentiment_data: dict = None) -> dict:
         """종합 분석 메인 루틴"""
@@ -667,7 +672,21 @@ class StockAnalyst:
         macro = self.macro.analyze(ticker, daily_df, index_df)
         vol_price = self.vol_price.analyze(daily_df)
         psych = self.psych.analyze(daily_df, sentiment_data)
-        
+        event_risk = self.calendar.calculate_event_risk()
+    
+        # ML 예측 (Pillar 1)
+        ml_forecast = self.ml_predictor.predict_next(daily_df)
+    
+        # 전략 앙상블 (고정밀 셋업 확인)
+        ensemble = StrategyEnsemble.calculate_ensemble(
+            daily_tech, event_risk, fundamental, psych.get('score', 50), ml_forecast
+        )
+    
+        # 백테스팅 (Pillar 3)
+        # 앙상블 로직을 단순화하여 과거 신호 생성 시뮬레이션
+        signals = (daily_df['Close'] > daily_df['Close'].rolling(20).mean()).astype(int) # 예시용 단순 신호
+        backtest_results = Backtester.backtest_vectorized(daily_df, signals)
+    
         res = {
             "ticker": ticker,
             "daily_analysis": daily_tech,
@@ -676,6 +695,12 @@ class StockAnalyst:
             "macro": macro,
             "volume_price": vol_price,
             "psychology": psych,
+            "event_risk": event_risk,
+            "ml_forecast": ml_forecast,
+            "backtest": backtest_results,
+            "ensemble": ensemble,
+            "market_regime": self._determine_market_regime(daily_df, daily_tech),
+            "strategy_checklist": self._get_strategy_checklist(daily_df, daily_tech),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
@@ -708,6 +733,10 @@ class StockAnalyst:
 
     def _calculate_smart_score(self, res: dict) -> int:
         """가중치 기반 종합 스코어링"""
+        # 앙상블 결과가 있으면 앙상블 점수 우선 사용
+        if res.get("ensemble"):
+            return int(res["ensemble"]["final_score"])
+            
         scores = {
             "tech": res["daily_analysis"]["score"] if res["daily_analysis"] else 50,
             "fund": res["fundamental"].get("score", 50),
@@ -741,6 +770,88 @@ class StockAnalyst:
         if hourly_df is not None and not hourly_df.empty:
             return self.tech.analyze(hourly_df).get('entry_points', {})
         return self.tech.analyze(daily_df).get('entry_points', {}) if daily_df is not None else {}
+
+    def _determine_market_regime(self, df: pd.DataFrame, tech: dict) -> dict:
+        """시장 국면(Regime) 판단 - Bull, Bear, VCP/Box"""
+        if df is None or len(df) < 200:
+            return {"regime": "Unknown", "desc": "데이터 부족"}
+
+        last_close = df['Close'].iloc[-1]
+        sma50 = df['Close'].rolling(50).mean().iloc[-1]
+        sma200 = tech['details'].get('sma_200') if tech else df['Close'].rolling(200).mean().iloc[-1]
+        
+        # 1. Bull (상승 추세)
+        if last_close > sma50 > sma200:
+            return {
+                "regime": "Bull",
+                "label": "강세장 (Bull Market)",
+                "color": "#10b981",
+                "desc": "주가가 주요 이평선 위에 위치하며 강력한 상승 모멘텀을 유지하고 있습니다."
+            }
+        
+        # 2. VCP/Box (변동성 수축/박스권)
+        has_vcp = any(p['name'] == 'VCP' for p in tech.get('patterns', []))
+        if has_vcp or (sma200 * 0.95 < last_close < sma200 * 1.05):
+            return {
+                "regime": "VCP",
+                "label": "변동성 수축/매집 (Consolidation)",
+                "color": "#fb923c",
+                "desc": "변동성이 줄어들며 에너지를 응축하고 있습니다. 돌파 시 큰 시세가 기대됩니다."
+            }
+            
+        # 3. Bear (하락 추세)
+        if last_close < sma200:
+            return {
+                "regime": "Bear",
+                "label": "약세장 (Bear Market)",
+                "color": "#f43f5e",
+                "desc": "장기 이평선 아래에서 하락 압박을 받고 있습니다. 보수적인 접근이 필요합니다."
+            }
+            
+        return {"regime": "Neutral", "label": "중립 (Neutral)", "color": "#94a3b8", "desc": "명확한 추세가 없는 상태입니다."}
+
+    def _get_strategy_checklist(self, df: pd.DataFrame, tech: dict) -> List[dict]:
+        """성공 확률을 높이는 전략적 체크리스트"""
+        if df is None or len(df) < 200: return []
+        
+        last_close = df['Close'].iloc[-1]
+        sma50 = df['Close'].rolling(50).mean().iloc[-1]
+        sma200 = tech['details'].get('sma_200') if tech else df['Close'].rolling(200).mean().iloc[-1]
+        sma200_prev = df['Close'].rolling(200).mean().iloc[-20] # 20일 전
+        
+        checklist = [
+            {
+                "id": "trend_200",
+                "text": "주가가 200일 이평선 위에 있는가?",
+                "status": last_close > sma200,
+                "importance": "High"
+            },
+            {
+                "id": "sma_slope",
+                "text": "200일 이평선이 우상향하고 있는가?",
+                "status": sma200 > sma200_prev,
+                "importance": "High"
+            },
+            {
+                "id": "sma_alignment",
+                "text": "정배열(50 > 200) 상태인가?",
+                "status": sma50 > sma200,
+                "importance": "Medium"
+            },
+            {
+                "id": "vcp_pattern",
+                "text": "변동성 수축(VCP) 흔적이 보이는가?",
+                "status": any(p['name'] == 'VCP' for p in tech.get('patterns', [])),
+                "importance": "High"
+            },
+            {
+                "id": "rsi_healthy",
+                "text": "RSI가 과열권(70+)이 아닌가?",
+                "status": tech.get('rsi', 50) < 70,
+                "importance": "Medium"
+            }
+        ]
+        return checklist
 
     def _generate_full_report(self, res: dict) -> str:
         sections = [

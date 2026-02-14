@@ -6,8 +6,9 @@
 """
 import os
 import logging
+from datetime import datetime
 from contextlib import contextmanager
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from sqlalchemy import create_engine, Column, Integer, String, Float, Date, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
@@ -67,6 +68,20 @@ class Financials(Base):
     total_liabilities = Column(Float)
     
     stock = relationship("Stock", back_populates="financials")
+
+
+class Alert(Base):
+    __tablename__ = 'alerts'
+    
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String, nullable=True)  # Stock ticker or 'Econ' for economic events
+    alert_type = Column(String)  # 'price_above', 'price_below', 'event'
+    target_value = Column(Float, nullable=True)  # Target price
+    event_type = Column(String, nullable=True)  # 'CPI', 'FOMC', etc.
+    note = Column(String)
+    is_active = Column(Integer, default=1)
+    triggered_at = Column(Date, nullable=True)
+    created_at = Column(Date, default=datetime.now().date())
 
 
 # ===========================================
@@ -250,6 +265,43 @@ class DataStorage:
             for r in records:
                 session.expunge(r)
             return records
+
+    def save_alert(self, ticker: str, alert_type: str, 
+                   target_value: float = None, 
+                   event_type: str = None, 
+                   note: str = "") -> int:
+        """알림 설정 저장"""
+        with self.get_session() as session:
+            alert = Alert(
+                ticker=ticker,
+                alert_type=alert_type,
+                target_value=target_value,
+                event_type=event_type,
+                note=note,
+                created_at=datetime.now().date()
+            )
+            session.add(alert)
+            session.flush()
+            return alert.id
+
+    def get_active_alerts(self, ticker: str = None) -> List[Alert]:
+        """활성 알림 조회"""
+        with self.get_session() as session:
+            query = session.query(Alert).filter_by(is_active=1)
+            if ticker:
+                query = query.filter_by(ticker=ticker)
+            records = query.all()
+            for r in records:
+                session.expunge(r)
+            return records
+            
+    def trigger_alert(self, alert_id: int):
+        """알림 트리거 (비활성화)"""
+        with self.get_session() as session:
+            alert = session.query(Alert).filter_by(id=alert_id).first()
+            if alert:
+                alert.is_active = 0
+                alert.triggered_at = datetime.now().date()
     
     @classmethod
     def reset_instance(cls):

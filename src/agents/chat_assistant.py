@@ -6,8 +6,48 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import os
+import json
+
+# 프로젝트 도구
+from src.data.storage import get_storage
+from src.data.collector import MarketDataCollector
 
 logger = logging.getLogger(__name__)
+
+# --- 도구(Tools) 정의 ---
+def set_price_alert(ticker: str, target_price: float, condition: str = "above", note: str = "") -> str:
+    """주식 가격 알림을 설정합니다. (condition: 'above' 또는 'below')"""
+    try:
+        storage = get_storage()
+        alert_id = storage.save_alert(
+            ticker=ticker.upper(),
+            alert_type=f"price_{condition}",
+            target_value=target_price,
+            note=note
+        )
+        return json.dumps({"status": "success", "alert_id": alert_id, "message": f"{ticker} ${target_price} {condition} 알람이 설정되었습니다."})
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+def get_market_data(ticker: str) -> str:
+    """주식의 현재가 및 최근 데이터를 가져옵니다."""
+    try:
+        collector = MarketDataCollector()
+        df = collector.get_ohlcv(ticker.upper(), period="5d", interval="1d")
+        if df is None or df.empty:
+            return json.dumps({"status": "error", "message": "데이터를 찾을 수 없습니다."})
+        
+        current_price = df['Close'].iloc[-1]
+        return json.dumps({
+            "ticker": ticker.upper(),
+            "current_price": float(current_price),
+            "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+# 도구 리스트
+TRADING_TOOLS = [set_price_alert, get_market_data]
 
 class ChatAssistant:
     """
@@ -40,9 +80,13 @@ class ChatAssistant:
                 except Exception as e:
                     logger.warning(f"모델 목록 조회 실패 ({e}), 기본값 사용: {model_name}")
 
-                self.model = genai.GenerativeModel(model_name)
+                self.model = genai.GenerativeModel(
+                    model_name=model_name,
+                    tools=TRADING_TOOLS
+                )
+                self.chat_session = self.model.start_chat(enable_automatic_function_calling=True)
                 self.use_ai = True
-                logger.info("✅ Google Gemini 활성화 (무료 AI 모드)")
+                logger.info("✅ Google Gemini 활성화 (Tool Calling 지원 모드)")
             except Exception as e:
                 self.model = None
                 self.use_ai = False
@@ -113,18 +157,20 @@ class ChatAssistant:
         return response
     
     def _generate_response_with_gemini(self, message: str, context: Optional[Dict] = None) -> str:
-        """Gemini Flash를 사용한 응답 생성"""
+        """Gemini Flash를 사용한 응답 생성 (Tool Calling 포함)"""
         try:
-            # 프롬프트 구성
-            prompt = self._build_gemini_prompt(message, context)
+            # 컨텍스트 기반 시스템 지침 추가
+            instruction = self.system_prompt
+            if context:
+                instruction += f"\n\n현재 컨텍스트: {json.dumps(context, ensure_ascii=False)}"
             
-            # Gemini 호출
-            response = self.model.generate_content(prompt)
+            # 메시지 전송 (자동 도구 실행 활성화됨)
+            response = self.chat_session.send_message(message)
             
             if response and response.text:
                 return response.text.strip()
             else:
-                return self._generate_smart_response(message, context)
+                return "죄송합니다. 응답을 생성하지 못했습니다."
                 
         except Exception as e:
             logger.error(f"Gemini 응답 생성 실패: {e}")

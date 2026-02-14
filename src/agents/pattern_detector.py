@@ -57,7 +57,19 @@ class AdvancedPatternDetector:
             "Diamond Bottom": 3.9,
             "Broadening Formation": 3.5,
             "Island Reversal": 4.0,
-            "Gap Patterns": 3.6
+            "Gap Patterns": 3.6,
+            
+            # 하모닉 패턴
+            "Gartley Pattern": 4.6,
+            "Bat Pattern": 4.5,
+            "Butterfly Pattern": 4.4,
+            
+            # SMC 패턴
+            "Order Block (Bullish)": 4.7,
+            "Order Block (Bearish)": 4.7,
+            
+            # 전략적 패턴 (VCP)
+            "VCP": 4.8
         }
     
     def detect_all_patterns(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
@@ -87,8 +99,13 @@ class AdvancedPatternDetector:
         
         # 4. 고급 패턴 감지
         patterns.extend(self._detect_cup_handle(df))
+        patterns.extend(self._detect_vcp(df)) # VCP 추가
         patterns.extend(self._detect_diamond(df, peaks, troughs))
         patterns.extend(self._detect_gaps(df))
+        
+        # 5. 하모닉 및 SMC 패턴
+        patterns.extend(self._detect_harmonic_patterns(df, peaks, troughs))
+        patterns.extend(self._detect_order_blocks(df))
         
         # 신뢰도 기준 정렬 (높은 순)
         patterns.sort(key=lambda x: x['reliability'], reverse=True)
@@ -478,11 +495,51 @@ class AdvancedPatternDetector:
         
         return patterns
     
-    def _detect_diamond(self, df: pd.DataFrame, peaks: List[int], troughs: List[int]) -> List[Dict]:
-        """다이아몬드 패턴"""
-        # 복잡한 패턴이므로 간략화
-        return []
-    
+    def _detect_vcp(self, df: pd.DataFrame) -> List[Dict]:
+        """
+        VCP (Volatility Contraction Pattern) 감지
+        - 마크 미너비니의 핵심 전략: 변동성 수축 및 거래량 말리기
+        """
+        patterns = []
+        if len(df) < 100: return []
+
+        # 1. 선행 상승 추세 확인 (200일선 위, 150일선 위 등)
+        sma200 = df['Close'].rolling(200).mean().iloc[-1]
+        if df['Close'].iloc[-1] < sma200: return []
+
+        # 2. 최근 60개 봉에서 변동성 수축 여부 확인
+        # 최근 3개의 의미있는 고점/저점 범위를 분석하여 수축 단계(T1, T2, T3) 식별
+        recent = df.tail(60)
+        
+        # 윈도우별 고점/저점 차이(Volatility) 계산
+        windows = [recent.iloc[:20], recent.iloc[20:40], recent.iloc[40:]]
+        volatilities = []
+        for w in windows:
+            high = w['High'].max()
+            low = w['Low'].min()
+            volatilities.append((high - low) / low * 100)
+        
+        # 변동성이 점진적으로 줄어드는지 확인 (예: 25% -> 12% -> 5%)
+        is_contracting = volatilities[0] > volatilities[1] > volatilities[2]
+        
+        # 3. 거래량 말리기 확인 (마지막 단계 거래량이 이전보다 적음)
+        avg_vol = recent['Volume'].mean()
+        last_vol = recent['Volume'].tail(5).mean()
+        is_volume_dry = last_vol < avg_vol * 0.8
+
+        if is_contracting and volatilities[2] < 10: # 마지막 수축이 10% 이내
+            patterns.append({
+                "name": "VCP",
+                "type": "bullish_continuation",
+                "reliability": self.pattern_reliability["VCP"],
+                "confidence": 85 if is_volume_dry else 70,
+                "points": [],
+                "desc": f"변동성 수축 패턴(VCP) 감지. 단계별 수축: {volatilities[0]:.1f}% > {volatilities[1]:.1f}% > {volatilities[2]:.1f}%. 현재 '거래량 말리기' 진행 중.",
+                "target": float(df['Close'].iloc[-1] * 1.2)
+            })
+
+        return patterns
+
     def _detect_gaps(self, df: pd.DataFrame) -> List[Dict]:
         """갭 패턴"""
         patterns = []
@@ -507,6 +564,79 @@ class AdvancedPatternDetector:
                 })
                 break
         
+        return patterns
+
+    # ==================== 하모닉 & SMC 패턴 ====================
+
+    def _detect_harmonic_patterns(self, df: pd.DataFrame, peaks: List[int], troughs: List[int]) -> List[Dict]:
+        """하모닉 패턴 감지 (피보나치 비율 기반)"""
+        patterns = []
+        all_points = sorted(peaks + troughs)
+        if len(all_points) < 5:
+            return []
+
+        # 최근 5개 변곡점 추출 (X, A, B, C, D)
+        pts = all_points[-5:]
+        x, a, b, c, d = pts
+        vx, va, vb, vc, vd = df['Close'].iloc[x], df['Close'].iloc[a], df['Close'].iloc[b], df['Close'].iloc[c], df['Close'].iloc[d]
+
+        # 다리(Leg) 길이 계산
+        xa = abs(va - vx)
+        ab = abs(vb - va)
+        bc = abs(vc - vb)
+        cd = abs(vd - vc)
+
+        if xa == 0 or ab == 0 or bc == 0: return []
+
+        # 비율 계산
+        ab_xa = ab / xa
+        bc_ab = bc / ab
+        cd_bc = cd / bc
+        ad_xa = abs(vd - va) / xa
+
+        # 1. Gartley Pattern (상승)
+        if 0.55 < ab_xa < 0.65 and 0.35 < bc_ab < 0.9 and 0.75 < ad_xa < 0.85:
+            patterns.append({
+                "name": "Gartley Pattern",
+                "type": "bullish_harmonic",
+                "reliability": self.pattern_reliability["Gartley Pattern"],
+                "confidence": 88,
+                "points": [
+                    {"index": x, "price": float(vx), "label": "X"},
+                    {"index": a, "price": float(va), "label": "A"},
+                    {"index": b, "price": float(vb), "label": "B"},
+                    {"index": c, "price": float(vc), "label": "C"},
+                    {"index": d, "price": float(vd), "label": "D"}
+                ],
+                "desc": "강력한 하모닉 상승 패턴. D지점(PRZ)에서 반등 확률 높음.",
+                "target": float(va + (va - vb) * 0.618)
+            })
+
+        return patterns
+
+    def _detect_order_blocks(self, df: pd.DataFrame) -> List[Dict]:
+        """SMC Order Block(매집/분배 구역) 식별"""
+        patterns = []
+        if len(df) < 5: return []
+
+        # 불리시 오더블록: 급등 전의 마지막 음봉
+        for i in range(len(df)-10, len(df)-3): # 충분한 가격 흐름을 위해 범위 조정
+            curr = df.iloc[i]
+            if curr['Close'] < curr['Open']: # 음봉
+                # 이후 3개 봉 내에 전고점 돌파 확인
+                future = df.iloc[i+1:i+4]
+                if not future.empty and future['Close'].max() > curr['High'] * 1.02:
+                    patterns.append({
+                        "name": "Order Block (Bullish)",
+                        "type": "smc_buy_zone",
+                        "reliability": 4.7,
+                        "confidence": 92,
+                        "points": [{"index": i, "price": float(curr['Low']), "label": "OB Zone"}],
+                        "desc": "기관의 대량 매수세가 유입된 구역입니다. 가격 재진입 시 강력한 지지가 기대됩니다.",
+                        "target": float(df['Close'].iloc[-1] * 1.1)
+                    })
+                    break
+
         return patterns
 
 

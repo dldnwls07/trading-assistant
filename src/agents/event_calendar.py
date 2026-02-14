@@ -458,6 +458,61 @@ class EventCalendar:
                 summary['upcoming_critical'].append({"date": e['date'], "title": e['title'], "days": (e_date-now).days})
         return summary
 
+    def calculate_event_risk(self, days_ahead: int = 7) -> Dict[str, Any]:
+        """
+        향후 n일간의 경제 이벤트가 시장에 미칠 잠재적 충격 수치화
+        Returns: {impact_score: 0.0~1.0, is_fomc_week: bool, critical_events: list}
+        """
+        now = datetime.now()
+        horizon = now + timedelta(days=days_ahead)
+        
+        # 전체 캘린더 가져오기 (종목 제외, 거시 지표 위주)
+        cal_data = self.get_calendar(
+            start_date=now.strftime("%Y-%m-%d"),
+            end_date=horizon.strftime("%Y-%m-%d")
+        )
+        
+        events = cal_data.get('events', [])
+        impact_weighted_sum = 0
+        total_weight = 0
+        is_fomc_week = False
+        critical_events = []
+        
+        # 가중치 설정
+        importance_map = {
+            "critical": 1.0,
+            "high": 0.7,
+            "medium": 0.4,
+            "low": 0.1
+        }
+        
+        for e in events:
+            imp = e.get('importance', 'low')
+            weight = importance_map.get(imp, 0.1)
+            
+            # 시간이 가까울수록 더 큰 영향 (감쇄 함수)
+            e_date = datetime.strptime(e['date'], "%Y-%m-%d")
+            days_diff = (e_date - now).days
+            time_decay = 1.0 / (1 + days_diff * 0.5)
+            
+            impact_weighted_sum += weight * time_decay
+            total_weight += 1
+            
+            if imp == "critical":
+                critical_events.append(e['title'])
+                if e.get('type') == 'FOMC':
+                    is_fomc_week = True
+        
+        # 0.0 ~ 1.0 사이로 정규화 (이벤트가 많고 중요할수록 충격 지수 상승)
+        impact_score = min(1.0, impact_weighted_sum / 2.0) # 2.0은 임의의 기준점
+        
+        return {
+            "impact_score": round(impact_score, 2),
+            "is_fomc_week": is_fomc_week,
+            "critical_events": critical_events,
+            "event_count": len(events)
+        }
+
     def format_for_ui(self, data: Dict) -> str:
         """UI 표시용 요약 텍스트"""
         lines = [f"📅 경제 캘린더 ({data['period']['start']} ~ {data['period']['end']})", f"총 {data['total_events']}개의 일정이 발견되었습니다.\n"]

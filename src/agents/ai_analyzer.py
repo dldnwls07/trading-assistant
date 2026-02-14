@@ -12,7 +12,9 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-from src.config import HF_TOKEN
+from src.config import HF_TOKEN, GEMINI_API_KEY, GROQ_API_KEY
+import requests
+import json
 
 class AIAnalyzer:
     """
@@ -23,6 +25,8 @@ class AIAnalyzer:
     
     def __init__(self):
         self.hf_token = HF_TOKEN
+        self.gemini_key = GEMINI_API_KEY
+        self.groq_key = GROQ_API_KEY
         self.client = None
         
         if self.hf_token and self.hf_token != "여기에_발급받은_토큰을_입력하세요":
@@ -127,17 +131,67 @@ Instructions:
 Write in a professional, decisive tone in {lang}."""
 
         try:
-            response = self.client.text_generation(
-                prompt,
-                model="microsoft/Phi-3-mini-4k-instruct",
-                max_new_tokens=800,
-                temperature=0.7
-            )
-            if response: return response.strip()
+            # 1. 시도: Gemini API (가장 강력한 무료)
+            if self.gemini_key:
+                return self._generate_with_gemini(prompt)
+            
+            # 2. 시도: Groq API (가장 빠른 무료)
+            if self.groq_key:
+                return self._generate_with_groq(prompt)
+
+            # 3. 시도: Hugging Face (기존 방식)
+            if self.client:
+                response = self.client.text_generation(
+                    prompt,
+                    model="microsoft/Phi-3-mini-4k-instruct",
+                    max_new_tokens=800,
+                    temperature=0.7
+                )
+                if response: return response.strip()
         except Exception as e:
             logger.error(f"AI Report generation failed: {e}")
         
         return self._generate_fallback_report(analysis_data)
+    
+    def _generate_with_gemini(self, prompt: str) -> str:
+        """Google Gemini 1.5 API 사용"""
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_key}"
+            headers = {'Content-Type': 'application/json'}
+            data = {
+                "contents": [{
+                    "parts": [{"text": prompt}]
+                }]
+            }
+            response = requests.post(url, headers=headers, json=data)
+            res_json = response.json()
+            if 'candidates' not in res_json:
+                logger.error(f"Gemini API Error: {res_json}")
+                raise KeyError(f"Missing 'candidates' in Gemini response: {res_json}")
+            return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+        except Exception as e:
+            logger.warning(f"Gemini API failed: {e}")
+            raise e
+
+    def _generate_with_groq(self, prompt: str) -> str:
+        """Groq API (Llama-3-70B) 사용"""
+        try:
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {self.groq_key}",
+                "Content-Type": "application/json"
+            }
+            data = {
+                "model": "llama3-70b-8192",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.5
+            }
+            response = requests.post(url, headers=headers, json=data)
+            res_json = response.json()
+            return res_json['choices'][0]['message']['content'].strip()
+        except Exception as e:
+            logger.warning(f"Groq API failed: {e}")
+            raise e
     
     def _generate_fallback_report(self, analysis_data: Dict[str, Any]) -> str:
         """AI API 실패 시 규칙 기반 리포트 생성 (전문가급 상세 버전)"""

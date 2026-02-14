@@ -30,6 +30,8 @@ DB_PATH = os.getenv("DB_PATH", "trading_assistant.db")
 # ===========================================
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 TRADING_ECONOMICS_KEY = os.getenv("TRADING_ECONOMICS_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 # ===========================================
 # 분석 설정 (타임프레임 추가)

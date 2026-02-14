@@ -11,6 +11,7 @@ from collections import Counter
 from src.agents.analyst import StockAnalyst
 from src.agents.profiler import InvestorProfiler
 from src.agents.screener import StockScreener
+from src.utils.kis_client import KISClient
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,20 @@ class PortfolioAnalyzer:
     포트폴리오 종합 평가 및 리밸런싱 제안
     """
     
-    def __init__(self):
+    def __init__(self, use_kis: bool = True):
         self.analyst = StockAnalyst()
         self.profiler = InvestorProfiler()
         self.screener = StockScreener(self.analyst)
+        
+        # KIS 클라이언트 초기화 (설정된 경우)
+        self.kis = None
+        if use_kis:
+            try:
+                is_paper = os.getenv("KIS_PAPER_TRADING", "True") == "True"
+                self.kis = KISClient(is_paper=is_paper)
+                logger.info("KIS 클라이언트 연동 완료")
+            except Exception as e:
+                logger.error(f"KIS 클라이언트 초기화 실패: {e}")
     
     def _get_exchange_rate(self) -> float:
         """실시간 USD/KRW 환율 가져오기 (yfinance)"""
@@ -128,6 +139,37 @@ class PortfolioAnalyzer:
             "rebalancing": rebalancing,
             "summary": self._generate_summary(portfolio_score, diversification, risk_balance, style_alignment)
         }
+
+    def sync_with_kis(self) -> List[Dict[str, Any]]:
+        """
+        KIS API를 통해 실제 계좌 잔고 및 종목 정보를 가져옵니다.
+        """
+        if not self.kis:
+            logger.warning("KIS 클라이언트가 설정되지 않았습니다.")
+            return []
+            
+        try:
+            # 국내 주식 잔고 조회
+            domestic_res = self.kis.get_stock_balance(is_domestic=True)
+            holdings = []
+            
+            if domestic_res.get("rt_cd") == "0":
+                for item in domestic_res.get("output1", []):
+                    ticker = item.get("pdno")  # 종목번호
+                    if ticker:
+                        holdings.append({
+                            "ticker": f"{ticker}.KS" if int(ticker) < 900000 else f"{ticker}.KQ", # 단순화된 마켓 판별
+                            "shares": int(item.get("hldg_qty", 0)),
+                            "avg_price": float(item.get("pchs_avg_pric", 0)),
+                            "name": item.get("prdt_name")
+                        })
+            
+            # TODO: 해외 주식 잔고 조회 통합
+            
+            return holdings
+        except Exception as e:
+            logger.error(f"KIS 잔고 동기화 중 오류: {e}")
+            return []
 
     
     def _analyze_holding(self, ticker: str, index_ticker: str) -> Optional[Dict[str, Any]]:
