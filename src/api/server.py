@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, Dict, List, Any
 import logging
@@ -178,9 +179,13 @@ class AnalysisResponse(BaseModel):
 
 # === API 엔드포인트 ===
 
-@app.get("/")
-async def root():
-    return {"status": "ok", "message": "Trading Assistant Server is running"}
+# === API 엔드포인트 ===
+
+# 루트 도메인 접속 시 프론트엔드 서빙 (정적 파일 설정 이후 하단에서 정의)
+# @app.get("/")
+# async def root():
+#     return {"status": "ok", "message": "Trading Assistant Server is running"}
+
 
 def get_final_ticker(ticker: str) -> str:
     """종목명이나 숫자를 yfinance 티커(symbol)로 변환"""
@@ -653,6 +658,78 @@ async def get_top_movers(market: str = "US"):
         logger.error(f"Top movers error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/api/exchange-rate")
+async def get_exchange_rate():
+    """실시간 USD/KRW 환율 조회"""
+    try:
+        df = collector.get_ohlcv("USDKRW=X", period="1d", interval="1m")
+        if df is not None and not df.empty:
+            rate = float(df['Close'].iloc[-1])
+            return {"rate": rate, "ticker": "USDKRW=X", "timestamp": datetime.now().isoformat()}
+        return {"rate": 1350.0, "note": "Fallback rate"} # 실패 시 기본값
+    except Exception as e:
+        logger.error(f"Exchange rate error: {e}")
+        return {"rate": 1350.0}
+
+# === 가상 계좌 관리 (Paper Trading) ===
+@app.get("/api/virtual/account")
+async def get_virtual_account():
+    """가상 계좌 잔고 및 정보 조회"""
+    try:
+        balance = storage.get_virtual_balance()
+        return {
+            "balance": balance,
+            "currency": "KRW",
+            "initial_balance": 10000000.0,
+            "total_profit": balance - 10000000.0,
+            "profit_rate": ((balance - 10000000.0) / 10000000.0) * 100
+        }
+    except Exception as e:
+        logger.error(f"Virtual account error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/virtual/positions")
+async def get_virtual_positions():
+    """가상 계좌 보유 종목 조회"""
+    try:
+        positions = storage.get_virtual_positions()
+        
+        # 현재 환율 가져오기
+        rate_res = await get_exchange_rate()
+        usd_krw = rate_res.get("rate", 1350.0)
+        
+        processed_positions = []
+        for pos in positions:
+            ticker = pos['ticker']
+            is_usd = not (ticker.endswith(('.KS', '.KQ')) or ticker.isdigit())
+            
+            df = collector.get_ohlcv(ticker, period="1d", interval="1m")
+            current_price = df['Close'].iloc[-1] if df is not None and not df.empty else pos['avg_price']
+            
+            # 통화별 가치 계산 (원화 기준 합산을 위해)
+            price_in_krw = current_price * usd_krw if is_usd else current_price
+            avg_in_krw = pos['avg_price'] * usd_krw if is_usd else pos['avg_price']
+            
+            profit_krw = (price_in_krw - avg_in_krw) * pos['quantity']
+            profit_rate = ((current_price - pos['avg_price']) / pos['avg_price']) * 100
+            
+            processed_positions.append({
+                **pos,
+                "is_usd": is_usd,
+                "current_price": current_price,
+                "current_price_krw": price_in_krw,
+                "profit_krw": profit_krw,
+                "profit_rate": profit_rate,
+                "total_value_native": current_price * pos['quantity'],
+                "total_value_krw": price_in_krw * pos['quantity']
+            })
+            
+        return safe_serialize(processed_positions)
+    except Exception as e:
+        logger.error(f"Virtual positions error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # === 다중 시간 프레임 분석 ===
 @app.get("/api/multi-timeframe/{ticker}")
 async def multi_timeframe_analysis(ticker: str):
@@ -736,4 +813,37 @@ async def health_check():
         "timestamp": datetime.now().isoformat()
     }
 
+# === 정적 파일 서빙 및 SPA 라우팅 (최하단 배치) ===
+dist_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "dist")
+
+if os.path.exists(dist_path):
+    # assets 폴더 마운트 (우선순위 높음)
+    assets_path = os.path.join(dist_path, "assets")
+    if os.path.exists(assets_path):
+        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+
+    # 가상 계좌 주소 등 기타 정적 파일 마운트
+    app.mount("/static", StaticFiles(directory=dist_path), name="static")
+
+    @app.get("/")
+    async def serve_index():
+        return FileResponse(os.path.join(dist_path, "index.html"))
+
+    # SPA 클라이언트 사이드 라우팅을 위한 Catch-all
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # API 요청이나 문서 요청은 404 처리 (이미 위에서 처리되지 않은 경우)
+        if full_path.startswith(("api/", "docs", "openapi.json", "analyze", "history", "search")):
+            raise HTTPException(status_code=404)
+        
+        index_file = os.path.join(dist_path, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404)
+else:
+    @app.get("/")
+    async def root():
+        return {"status": "ok", "message": "API Server is running (Frontend dist not found)"}
+
 # 실행용: uvicorn src.api.server:app --reload --host 0.0.0.0 --port 8000
+

@@ -84,6 +84,33 @@ class Alert(Base):
     created_at = Column(Date, default=datetime.now().date())
 
 
+class VirtualAccount(Base):
+    __tablename__ = 'virtual_accounts'
+    id = Column(Integer, primary_key=True)
+    balance = Column(Float, default=10000000.0)  # 초기 자본 1,000만원
+    currency = Column(String, default='KRW')
+    updated_at = Column(Date, default=datetime.now().date())
+
+
+class VirtualPosition(Base):
+    __tablename__ = 'virtual_positions'
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String, ForeignKey('stocks.ticker'))
+    quantity = Column(Integer, default=0)
+    avg_price = Column(Float, default=0.0)
+    updated_at = Column(Date, default=datetime.now().date())
+
+
+class VirtualTrade(Base):
+    __tablename__ = 'virtual_trades'
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String)
+    side = Column(String)  # 'BUY', 'SELL'
+    quantity = Column(Integer)
+    price = Column(Float)
+    timestamp = Column(Date, default=datetime.now().date())
+
+
 # ===========================================
 # 싱글톤 DataStorage
 # ===========================================
@@ -302,6 +329,54 @@ class DataStorage:
             if alert:
                 alert.is_active = 0
                 alert.triggered_at = datetime.now().date()
+
+    # --- 가상 매매 관련 메서드 ---
+    def get_virtual_balance(self) -> float:
+        """가상 잔고 조회"""
+        with self.get_session() as session:
+            acc = session.query(VirtualAccount).first()
+            if not acc:
+                acc = VirtualAccount(balance=10000000.0)
+                session.add(acc)
+                session.flush()
+            return acc.balance
+
+    def update_virtual_balance(self, amount: float):
+        """가상 잔고 업데이트 (증감)"""
+        with self.get_session() as session:
+            acc = session.query(VirtualAccount).first()
+            if not acc:
+                acc = VirtualAccount(balance=10000000.0)
+                session.add(acc)
+            acc.balance += amount
+            acc.updated_at = datetime.now().date()
+
+    def get_virtual_positions(self) -> List[Dict]:
+        """가상 포지션 조회"""
+        with self.get_session() as session:
+            positions = session.query(VirtualPosition).filter(VirtualPosition.quantity > 0).all()
+            return [{"ticker": p.ticker, "quantity": p.quantity, "avg_price": p.avg_price} for p in positions]
+
+    def update_virtual_position(self, ticker: str, quantity: int, price: float, side: str):
+        """가상 포지션 업데이트"""
+        with self.get_session() as session:
+            pos = session.query(VirtualPosition).filter_by(ticker=ticker).first()
+            if side == 'BUY':
+                if not pos:
+                    pos = VirtualPosition(ticker=ticker, quantity=quantity, avg_price=price)
+                    session.add(pos)
+                else:
+                    total_cost = (pos.avg_price * pos.quantity) + (price * quantity)
+                    pos.quantity += quantity
+                    pos.avg_price = total_cost / pos.quantity
+            elif side == 'SELL' and pos:
+                pos.quantity -= quantity
+                if pos.quantity <= 0:
+                    session.delete(pos)
+            
+            # 거래 이력 저장
+            trade = VirtualTrade(ticker=ticker, side=side, quantity=quantity, price=price)
+            session.add(trade)
     
     @classmethod
     def reset_instance(cls):

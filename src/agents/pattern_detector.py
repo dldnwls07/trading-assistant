@@ -72,6 +72,38 @@ class AdvancedPatternDetector:
             "VCP": 4.8
         }
     
+    def _detect_diamond(self, df: pd.DataFrame, peaks: List[int], troughs: List[int]) -> List[Dict]:
+        """다이아몬드 패턴 (Top/Bottom)"""
+        patterns = []
+        if len(peaks) < 3 or len(troughs) < 3: return []
+        
+        # 다이아몬드 탑: 확장에서 수렴으로 전환
+        # 간단한 로직: 고점이 높아지다 낮아짐 + 저점이 낮아지다 높아짐
+        recent_peaks = df['High'].iloc[peaks[-3:]]
+        recent_troughs = df['Low'].iloc[troughs[-3:]]
+        
+        if len(recent_peaks) == 3 and len(recent_troughs) == 3:
+            p1, p2, p3 = recent_peaks.iloc[0], recent_peaks.iloc[1], recent_peaks.iloc[2]
+            t1, t2, t3 = recent_troughs.iloc[0], recent_troughs.iloc[1], recent_troughs.iloc[2]
+            
+            # 패턴 형성 조건 Check
+            is_diamond = (p2 > p1 and p2 > p3) and (t2 < t1 and t2 < t3)
+            
+            if is_diamond:
+                # Top (고점) vs Bottom (저점) 판단
+                # 현재 주가 위치가 패턴의 하단부 이탈 시 Top, 상단부 돌파 시 Bottom
+                patterns.append({
+                    "name": "Diamond Pattern",
+                    "type": "reversal",
+                    "reliability": self.pattern_reliability.get("Diamond Top", 3.8),
+                    "confidence": 75,
+                    "points": [],
+                    "desc": "다이아몬드 패턴 형성. 추세 반전의 강력한 신호.",
+                    "target": None
+                })
+                
+        return patterns
+
     def detect_all_patterns(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """모든 패턴 감지 (우선순위 순)"""
         if len(df) < 60:

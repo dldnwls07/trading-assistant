@@ -446,7 +446,10 @@ class TechnicalAnalyzer:
             "summary": "; ".join(reasons) if reasons else "중립",
             "details": details,
             "entry_points": entry_points,
-            "patterns": patterns
+            "patterns": patterns,
+            "sma_20": sma_20,
+            "sma_50": sma_50,
+            "sma_200": sma_200
         }
 
 class FundamentalAnalyzer:
@@ -777,11 +780,15 @@ class StockAnalyst:
             return {"regime": "Unknown", "desc": "데이터 부족"}
 
         last_close = df['Close'].iloc[-1]
-        sma50 = df['Close'].rolling(50).mean().iloc[-1]
-        sma200 = tech['details'].get('sma_200') if tech else df['Close'].rolling(200).mean().iloc[-1]
+        
+        sma50 = tech.get('sma_50')
+        if sma50 is None: sma50 = df['Close'].rolling(50).mean().iloc[-1]
+        
+        sma200 = tech.get('sma_200')
+        if sma200 is None: sma200 = df['Close'].rolling(200).mean().iloc[-1]
         
         # 1. Bull (상승 추세)
-        if last_close > sma50 > sma200:
+        if pd.notna(sma50) and pd.notna(sma200) and last_close > sma50 > sma200:
             return {
                 "regime": "Bull",
                 "label": "강세장 (Bull Market)",
@@ -815,8 +822,13 @@ class StockAnalyst:
         if df is None or len(df) < 200: return []
         
         last_close = df['Close'].iloc[-1]
-        sma50 = df['Close'].rolling(50).mean().iloc[-1]
-        sma200 = tech['details'].get('sma_200') if tech else df['Close'].rolling(200).mean().iloc[-1]
+        
+        sma50 = tech.get('sma_50')
+        if sma50 is None: sma50 = df['Close'].rolling(50).mean().iloc[-1]
+        
+        sma200 = tech.get('sma_200')
+        if sma200 is None: sma200 = df['Close'].rolling(200).mean().iloc[-1]
+        
         sma200_prev = df['Close'].rolling(200).mean().iloc[-20] # 20일 전
         
         checklist = [

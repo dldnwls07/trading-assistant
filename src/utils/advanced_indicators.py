@@ -13,7 +13,7 @@ class AdvancedIndicators:
         
         # === 1. 추세 지표 (Trend) ===
         # 이동평균선 (SMA): 표준 주기 중심 (5, 20, 50, 200)
-        for period in [5, 20, 50, 200]:
+        for period in [5, 20, 50, 60, 120, 200]:
             calc[f'sma_{period}'] = calc['Close'].rolling(window=period).mean()
         
         # 지수이동평균 (EMA): 시그널 위주 (9, 20, 50)

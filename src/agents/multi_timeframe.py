@@ -672,7 +672,12 @@ class MultiTimeframeAnalyzer:
             confidence = 50
         
         # 앙상블 합치기
-        ensembles = [results[tf]['full_analysis'].get('ensemble') for tf in ["short_term", "medium_term", "long_term"] if results[tf]]
+        ensembles = []
+        for tf in ["short_term", "medium_term", "long_term"]:
+            if results[tf] and "full_analysis" in results[tf]:
+                ensembles.append(results[tf]['full_analysis'].get('ensemble'))
+            else:
+                ensembles.append(None)
         global_ensemble = None
         if ensembles and ensembles[1]: # 중기(Daily) 앙상블을 메인으로 사용
             global_ensemble = ensembles[1]

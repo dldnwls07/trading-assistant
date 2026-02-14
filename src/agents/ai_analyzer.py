@@ -154,21 +154,50 @@ Write in a professional, decisive tone in {lang}."""
         return self._generate_fallback_report(analysis_data)
     
     def _generate_with_gemini(self, prompt: str) -> str:
-        """Google Gemini 1.5 API 사용"""
+        """Google Gemini API 사용 (generativeai 라이브러리)"""
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_key}"
-            headers = {'Content-Type': 'application/json'}
-            data = {
-                "contents": [{
-                    "parts": [{"text": prompt}]
-                }]
-            }
-            response = requests.post(url, headers=headers, json=data)
-            res_json = response.json()
-            if 'candidates' not in res_json:
-                logger.error(f"Gemini API Error: {res_json}")
-                raise KeyError(f"Missing 'candidates' in Gemini response: {res_json}")
-            return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+            import google.generativeai as genai
+            genai.configure(api_key=self.gemini_key)
+            
+            # 모델 우선순위 정의 (Flash 2.0 -> Flash 1.5 -> Pro -> Basic)
+            priority_models = []
+            try:
+                available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                
+                # 1. Gemini 2.0 Flash (최신/고성능)
+                for m in available:
+                    if 'gemini-2.0-flash' in m: priority_models.append(m)
+                
+                # 2. Gemini 1.5 Flash (안정적)
+                for m in available:
+                    if 'gemini-1.5-flash' in m: priority_models.append(m)
+                    
+                # 3. Gemini Pro (기본)
+                for m in available:
+                    if 'gemini-pro' in m and 'vision' not in m: priority_models.append(m)
+                    
+            except Exception as e:
+                logger.warning(f"모델 목록 조회 실패: {e}")
+                # 목록 조회 실패 시 기본값이라도 시도
+                priority_models = ['models/gemini-1.5-flash', 'models/gemini-pro']
+
+            # 모델 순차 시도
+            last_error = None
+            for model_name in priority_models:
+                try:
+                    logger.info(f"Gemini 모델 시도: {model_name}")
+                    model = genai.GenerativeModel(model_name)
+                    response = model.generate_content(prompt)
+                    return response.text.strip()
+                except Exception as e:
+                    logger.warning(f"모델 {model_name} 실패: {e}")
+                    last_error = e
+                    continue
+            
+            # 모든 모델 실패 시
+            if last_error:
+                raise last_error
+                
         except Exception as e:
             logger.warning(f"Gemini API failed: {e}")
             raise e
