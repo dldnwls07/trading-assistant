@@ -10,6 +10,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import yfinance as yf
+import asyncio
 
 from src.agents.analyst import StockAnalyst
 from src.agents.pattern_detector import AdvancedPatternDetector

@@ -8,6 +8,7 @@ import logging
 import pandas as pd
 import json
 import os
+import asyncio
 from datetime import datetime
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
@@ -17,7 +18,7 @@ from src.data.collector import MarketDataCollector
 from src.data.storage import get_storage
 from src.data.parser import FinancialParser
 from src.agents.analyst import StockAnalyst
-from src.agents.ai_analyzer import AIAnalyzer
+from src.agents.ai_analyzer import AIAnalyzer, get_stock_events
 from src.agents.chat_assistant import ChatAssistant
 from src.agents.event_calendar import EventCalendar
 from src.agents.portfolio_analyzer import PortfolioAnalyzer
@@ -155,7 +156,6 @@ screener = StockScreener()
 
 @app.on_event("startup")
 async def startup_event():
-    import asyncio
     global screener
     
     # DB 초기화 (테이블 생성 등)
@@ -301,7 +301,7 @@ async def run_analysis(ticker: str, lang: str = "ko"):
     # 2. 다중 시간 프레임 분석 (30+ 데이터 포인트 자동 생성)
     # 한국 주식은 KOSPI(^KS11), 미국 주식은 S&P 500(^GSPC) 기준
     index_symbol = "^KS11" if final_ticker.endswith(('.KS', '.KQ')) else "^GSPC"
-    multi_res = multi_analyzer.analyze_all_timeframes(final_ticker, index_ticker=index_symbol)
+    multi_res = await multi_analyzer.analyze_all_timeframes(final_ticker, index_ticker=index_symbol)
     
     # 3. 추가 데이터 (재무, 이벤트)
     financials = await storage.get_financials(final_ticker)
