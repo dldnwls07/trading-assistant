@@ -143,11 +143,19 @@ class MarketDataCollector:
                         # [긴급 백업] yfinance가 비어있다면 FinanceDataReader(인베스팅) 시도
                         if (df is None or df.empty) and not is_korean and interval in ['1d', '1wk', '1mo']:
                             logger.warning(f"yfinance blocked for {ticker}, falling back to FinanceDataReader...")
-                            df = fdr.DataReader(ticker, period=period) # FDR은 미국 종목도 인베스팅닷컴 등으로 가져옴
+                            # FDR은 period 대신 start, end 사용
+                            end_date = datetime.now()
+                            if period == '1y': start_date = end_date - timedelta(days=365)
+                            elif period == '60d': start_date = end_date - timedelta(days=60)
+                            else: start_date = end_date - timedelta(days=365)
+                            
+                            df = fdr.DataReader(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
                     except Exception as e:
                         logger.warning(f"Primary fetch failed: {e}, attempting fallback...")
                         if not is_korean:
-                            df = fdr.DataReader(ticker, period=period)
+                            end_date = datetime.now()
+                            start_date = end_date - timedelta(days=365)
+                            df = fdr.DataReader(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
                         else:
                             raise e
                 
