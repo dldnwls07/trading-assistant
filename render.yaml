@@ -1,19 +1,9 @@
 services:
   - type: web
-    name: trading-assistant-api
+    name: trading-assistant-all-in-one
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn src.api.server:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.7
-      - key: IS_VIRTUAL
-        value: "True"
-  - type: worker
-    name: trading-bot-engine
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -m src.agents.auto_trader
+    startCommand: bash start_render.sh
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.7
