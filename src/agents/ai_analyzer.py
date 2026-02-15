@@ -12,32 +12,31 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-from src.config import HF_TOKEN, GEMINI_API_KEY, GROQ_API_KEY
+from src.config import settings
 import requests
 import json
 
 class AIAnalyzer:
     """
-    Hugging Face API를 활용한 AI 분석기
-    - FinBERT: 금융 뉴스 감성 분석
-    - LLM: 전문가 리포트 생성
+    Hugging Face / Gemini / Groq API를 활용한 전략 분석기
+    - 중앙 설정(settings)을 통해 API 키 관리
     """
     
     def __init__(self):
-        self.hf_token = HF_TOKEN
-        self.gemini_key = GEMINI_API_KEY
-        self.groq_key = GROQ_API_KEY
+        self.hf_token = settings.HF_TOKEN
+        self.gemini_key = settings.GEMINI_API_KEY
+        self.groq_key = settings.GROQ_API_KEY
         self.client = None
         
-        if self.hf_token and self.hf_token != "여기에_발급받은_토큰을_입력하세요":
+        if self.hf_token:
             try:
                 from huggingface_hub import InferenceClient
                 self.client = InferenceClient(token=self.hf_token)
-                logger.info("Hugging Face API 연결 성공")
+                logger.info("✅ AIAnalyzer: Hugging Face connected")
             except Exception as e:
-                logger.warning(f"Hugging Face 연결 실패: {e}")
+                logger.warning(f"AIAnalyzer: HF Connection failed: {e}")
         else:
-            logger.warning("HF_TOKEN이 설정되지 않았습니다. AI 분석 기능이 제한됩니다.")
+            logger.warning("AIAnalyzer: HF_TOKEN is missing. Some AI features may be limited.")
     
     def analyze_sentiment(self, text: str) -> Dict[str, Any]:
         """

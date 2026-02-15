@@ -654,40 +654,62 @@ class PsychologicalAnalyzer:
 
 class StockAnalyst:
     """
-    종합 분석 엔진 - 기술적 + 기본적 + 거시적 + 수급 + 심리 통합
+    종합 분석 엔진 (Orchestrator)
+    - 의존성 주입(DI) 아키텍처를 사용하여 모듈성 및 테스트 용이성 확보
+    - 중앙 설정(settings) 기반 가중치 및 스코어링 시스템 통합
     """
-    def __init__(self):
-        self.tech = TechnicalAnalyzer()
-        self.fund = FundamentalAnalyzer()
-        self.macro = MacroAnalyzer()
-        self.vol_price = VolumePriceAnalyzer()
-        self.psych = PsychologicalAnalyzer()
-        self.calendar = EventCalendar()
-        self.ml_predictor = MLPricePredictor()
+    def __init__(
+        self,
+        tech: TechnicalAnalyzer = None,
+        fund: FundamentalAnalyzer = None,
+        macro: MacroAnalyzer = None,
+        vol_price: VolumePriceAnalyzer = None,
+        psych: PsychologicalAnalyzer = None,
+        calendar: EventCalendar = None,
+        ml: MLPricePredictor = None
+    ):
+        # 의존성 주입 (주입되지 않으면 기본 객체 생성)
+        self.tech = tech or TechnicalAnalyzer()
+        self.fund = fund or FundamentalAnalyzer()
+        self.macro = macro or MacroAnalyzer()
+        self.vol_price = vol_price or VolumePriceAnalyzer()
+        self.psych = psych or PsychologicalAnalyzer()
+        self.calendar = calendar or EventCalendar()
+        self.ml_predictor = ml or MLPricePredictor()
         
-    def analyze_ticker(self, ticker: str, daily_df: pd.DataFrame, financials: list = None, hourly_df: pd.DataFrame = None, index_df: pd.DataFrame = None, sentiment_data: dict = None) -> dict:
-        """종합 분석 메인 루틴"""
+    def analyze_ticker(
+        self, 
+        ticker: str, 
+        daily_df: pd.DataFrame, 
+        financials: list = None, 
+        hourly_df: pd.DataFrame = None, 
+        index_df: pd.DataFrame = None, 
+        sentiment_data: dict = None
+    ) -> dict:
+        """종합 분석 메인 루틴 (Orchestration)"""
+        if daily_df is None or daily_df.empty:
+            return {"error": "No daily data provided for analysis"}
+
+        # 1. 개별 관점 분석 수행
         daily_tech = self._analyze_df(daily_df)
         hourly_tech = self._analyze_df(hourly_df) if hourly_df is not None else None
         fundamental = self.fund.analyze(financials) if financials else {"score": 50, "summary": "재무 데이터 없음"}
-        
-        # 신규 관점 분석
         macro = self.macro.analyze(ticker, daily_df, index_df)
         vol_price = self.vol_price.analyze(daily_df)
         psych = self.psych.analyze(daily_df, sentiment_data)
         event_risk = self.calendar.calculate_event_risk()
     
-        # ML 예측 (Pillar 1)
+        # 2. 고도화된 레이어 분석 (ML & 전략 앙상블)
         ml_forecast = self.ml_predictor.predict_next(daily_df)
-    
-        # 전략 앙상블 (고정밀 셋업 확인)
+        
+        # 전략 앙상블 (설정값 기반 최종 신뢰도 산출)
         ensemble = StrategyEnsemble.calculate_ensemble(
             daily_tech, event_risk, fundamental, psych.get('score', 50), ml_forecast
         )
     
-        # 백테스팅 (Pillar 3)
-        # 앙상블 로직을 단순화하여 과거 신호 생성 시뮬레이션
-        signals = (daily_df['Close'] > daily_df['Close'].rolling(20).mean()).astype(int) # 예시용 단순 신호
+        # 3. 과거 성과 검증 (Backtesting)
+        # TODO: 실제 전략 신호와 연동된 정밀 백테스팅 구현 예정
+        signals = (daily_df['Close'] > daily_df['Close'].rolling(20).mean()).astype(int)
         backtest_results = Backtester.backtest_vectorized(daily_df, signals)
     
         res = {
@@ -702,20 +724,18 @@ class StockAnalyst:
             "ml_forecast": ml_forecast,
             "backtest": backtest_results,
             "ensemble": ensemble,
-            "market_regime": self._determine_market_regime(daily_df, daily_tech),
-            "strategy_checklist": self._get_strategy_checklist(daily_df, daily_tech),
+            "market_regime": self._determine_market_regime(daily_df, daily_tech or {}),
+            "strategy_checklist": self._get_strategy_checklist(daily_df, daily_tech or {}),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
-        # 종합 점수 산출
+        # 4. 종합 점수 및 최종 판단 (Multi-factor Scoring)
         res["final_score"] = self._calculate_smart_score(res)
         res["signal"] = self._get_signal_text(res["final_score"])
         res["entry_points"] = self._calculate_entry_points(daily_df, hourly_df)
         
-        # 가격 시나리오 추가
-        if daily_df is not None:
-             res["price_scenarios"] = self.tech.get_price_scenarios(daily_df)
-             
+        # 5. 시나리오 및 리포트 생성
+        res["price_scenarios"] = self.tech.get_price_scenarios(daily_df)
         res["full_report"] = self._generate_full_report(res)
 
         return res

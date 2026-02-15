@@ -12,6 +12,7 @@ from datetime import datetime
 import yfinance as yf
 import asyncio
 
+from src.config import settings
 from src.agents.analyst import StockAnalyst
 from src.agents.pattern_detector import AdvancedPatternDetector
 from src.agents.ai_analyzer import AIAnalyzer
@@ -21,52 +22,57 @@ logger = logging.getLogger(__name__)
 
 class MultiTimeframeAnalyzer:
     """
-    다중 시간 프레임 종합 분석
-    - 단기 (1~5일): 분봉/시간봉 기반 데이 트레이딩
-    - 중기 (1~3개월): 일봉 기반 스윙 트레이딩
-    - 장기 (6개월~1년): 주봉/월봉 기반 포지션 트레이딩
+    다중 시간 프레임 종합 분석 시스템
+    - 의존성 주입(DI)을 통해 상위 서비스에서 분석 엔진 제어 가능
+    - 중앙 설정(settings) 시스템 통합으로 파라미터 유연성 확보
     """
     
-    TIMEFRAMES = {
-        "short": {
-            "name": "단기 (관점: 1개월)",
-            "description": "최근 1개월간의 1시간봉 기반 정밀 분석",
-            "data_period": "1mo",
-            "data_interval": "1h",  # 1시간봉
-            "holding_period": "1~4주",
-            "focus": "기술적 지표, 단기 모멘텀, 거래량"
-        },
-        "medium": {
-            "name": "중기 (관점: 6개월)",
-            "description": "최근 12개월간의 일봉 기반 추세 분석",
-            "data_period": "1y",
-            "data_interval": "1d",  # 일봉
-            "holding_period": "3~6개월",
-            "focus": "차트 패턴, 이동평균선, 지지/저항"
-        },
-        "long": {
-            "name": "장기 (관점: 1년 이상)",
-            "description": "2년 이상의 주봉 기반 가치 및 거시 선행 분석",
-            "data_period": "2y",
-            "data_interval": "1wk",  # 주봉
-            "holding_period": "1년 이상",
-            "focus": "펀더멘털, 장기 추세, 거시 경제"
+    # 설정값 클래스 속성을 settings에서 동적으로 로드 가능하도록 구조화
+    @property
+    def timeframe_config(self):
+        return {
+            "short": {
+                "name": "단기 (관점: 1개월)",
+                "description": "최근 1개월간의 1시간봉 기반 정밀 분석",
+                "data_period": "1mo",
+                "data_interval": "1h",
+                "holding_period": "1~4주",
+                "focus": "기술적 지표, 단기 모멘텀, 거래량"
+            },
+            "medium": {
+                "name": "중기 (관점: 6개월)",
+                "description": "최근 12개월간의 일봉 기반 추세 분석",
+                "data_period": "1y",
+                "data_interval": "1d",
+                "holding_period": "3~6개월",
+                "focus": "차트 패턴, 이동평균선, 지지/저항"
+            },
+            "long": {
+                "name": "장기 (관점: 1년 이상)",
+                "description": "2년 이상의 주봉 기반 가치 및 거시 선행 분석",
+                "data_period": "2y",
+                "data_interval": "1wk",
+                "holding_period": "1년 이상",
+                "focus": "펀더멘털, 장기 추세, 거시 경제"
+            }
         }
-    }
+
+    def __init__(
+        self,
+        analyst: StockAnalyst = None,
+        pattern_detector: AdvancedPatternDetector = None,
+        ai_analyzer: AIAnalyzer = None,
+        collector: MarketDataCollector = None
+    ):
+        # 의존성 주입
+        self.analyst = analyst or StockAnalyst()
+        self.pattern_detector = pattern_detector or AdvancedPatternDetector()
+        self.ai_analyzer = ai_analyzer or AIAnalyzer()
+        self.collector = collector or MarketDataCollector()
     
-    def __init__(self):
-        self.analyst = StockAnalyst()
-        self.pattern_detector = AdvancedPatternDetector()
-        self.ai_analyzer = AIAnalyzer()
-        self.collector = MarketDataCollector()
-    
-    async def analyze_all_timeframes(self, 
-                               ticker: str,
-                               index_ticker: str = "^GSPC") -> Dict[str, Any]:
-        """
-        모든 시간 프레임에 대한 종합 분석 (비동기 병렬 처리)
-        """
-        logger.info(f"{ticker} 다중 시간 프레임 분석 시작")
+    async def analyze_all_timeframes(self, ticker: str, index_ticker: str = "^GSPC") -> Dict[str, Any]:
+        """모든 시간 프레임 종합 분석 (비동기 병렬 처리)"""
+        logger.info(f"🚀 {ticker} Multi-timeframe analysis started...")
         
         results = {
             "ticker": ticker,
@@ -78,109 +84,91 @@ class MultiTimeframeAnalyzer:
             "all_patterns": []
         }
         
-        # 각 시간 프레임별 분석 태스크 생성
-        tasks = [self._analyze_timeframe(ticker, tf_key, index_ticker) for tf_key in ["short", "medium", "long"]]
+        # 병렬 분석 태스크 생성
+        tasks = [
+            self._analyze_timeframe(ticker, tf_key, index_ticker) 
+            for tf_key in ["short", "medium", "long"]
+        ]
         tf_results = await asyncio.gather(*tasks)
         
-        # 결과 매핑 및 패턴 수집
+        # 결과 매핑
         for i, tf_key in enumerate(["short", "medium", "long"]):
-            tf_result = tf_results[i]
-            results[f"{tf_key}_term"] = tf_result
-            
-            if tf_result and tf_result.get('patterns'):
-                for pattern in tf_result['patterns']:
-                    pattern['timeframe'] = tf_key
-                    results['all_patterns'].append(pattern)
+            res = tf_results[i]
+            results[f"{tf_key}_term"] = res
+            if res and res.get('patterns'):
+                for p in res['patterns']:
+                    p['timeframe'] = tf_key
+                    results['all_patterns'].append(p)
         
-        # 종합 컨센서스 생성
+        # 1. 컨센서스 생성
         results["consensus"] = self._generate_consensus(results)
         
-        # AI 수석 분석가 리포트 생성 (필요 시 비동기 지원 확인)
-        # ai_analyzer.generate_report가 비동기라면 await 필수
-        results["ai_report"] = self.ai_analyzer.generate_report(results)
+        # 2. AI 리포트 생성 (비동기 처리 지원을 위해 래핑 고려)
+        try:
+            results["ai_report"] = self.ai_analyzer.generate_report(results)
+        except Exception as e:
+            logger.error(f"Failed to generate AI report: {e}")
+            results["ai_report"] = "AI 리포트 생성 중 오류가 발생했습니다."
         
         return results
-    
-    async def _analyze_timeframe(self, 
-                          ticker: str,
-                          timeframe: str,
-                          index_ticker: str) -> Dict[str, Any]:
+
+    async def _analyze_timeframe(self, ticker: str, timeframe: str, index_ticker: str) -> Dict[str, Any]:
         """특정 시간 프레임 분석 (비동기)"""
         try:
-            tf_config = self.TIMEFRAMES[timeframe]
+            config = self.timeframe_config[timeframe]
             
-            # 데이터 수집 (await 적용)
-            stock_data = await self._fetch_data(
+            # 데이터 수집 (표준화된 collector 사용)
+            stock_data = await self.collector.get_ohlcv(
                 ticker, 
-                period=tf_config["data_period"],
-                interval=tf_config["data_interval"]
+                period=config["data_period"], 
+                interval=config["data_interval"]
             )
-            
-            index_data = await self._fetch_data(
+            index_data = await self.collector.get_ohlcv(
                 index_ticker,
-                period=tf_config["data_period"],
-                interval=tf_config["data_interval"]
+                period=config["data_period"],
+                interval=config["data_interval"]
             )
             
             if stock_data is None or stock_data.empty:
-                return self._empty_result(timeframe, "데이터 수집 실패")
+                return self._empty_result(timeframe, "Data unavailable")
+
+            # Pandas Index를 Datetime으로 보장 (패턴 감지용)
+            if 'Date' in stock_data.columns:
+                stock_data.set_index(pd.to_datetime(stock_data['Date']), inplace=True)
             
-            # 종합 분석 수행
+            # 1. 코어 분석 수행
             analysis = self.analyst.analyze_ticker(
                 ticker=ticker,
                 daily_df=stock_data,
-                index_df=index_data,
-                financials=None,
-                hourly_df=None,
-                sentiment_data=None
+                index_df=index_data
             )
             
-            # 시간 프레임별 특화 분석 추가
-            specialized = self._apply_timeframe_specific_analysis(
-                timeframe, stock_data, analysis
-            )
+            # 2. 시간 프레임별 특화 인사이트
+            specialized = self._apply_timeframe_specific_analysis(timeframe, stock_data, analysis)
             
-            # 고급 패턴 감지
+            # 3. 고급 차트 패턴 감지
             detected_patterns = self.pattern_detector.detect_all_patterns(stock_data)
             
-            # 패턴 인덱스를 타임스탬프로 변환 (차트 시각화용)
-            for p in detected_patterns:
-                if 'points' in p:
-                    for pt in p['points']:
-                        idx = pt.get('index')
-                        if idx is not None and 0 <= idx < len(stock_data):
-                            # 타임스탬프를 문자열로 변환 (ISO 형식 또는 날짜만)
-                            ts = stock_data.index[idx]
-                            if timeframe == "short":
-                                pt['time'] = ts.strftime('%Y-%m-%d %H:%M:%S')
-                            else:
-                                pt['time'] = ts.strftime('%Y-%m-%d')
-            
-            # 시간 프레임별 매수/매도 타점 계산
+            # 4. 타점 및 추천 생성
             entry_exit_points = self._calculate_timeframe_entry_points(
                 timeframe, stock_data, analysis, detected_patterns
             )
             
             return {
                 "timeframe": timeframe,
-                "name": tf_config["name"],
-                "description": tf_config["description"],
-                "holding_period": tf_config["holding_period"],
-                "focus_areas": tf_config["focus"],
-                "score": analysis["final_score"],
-                "signal": analysis["signal"],
-                "current_price": stock_data['Close'].iloc[-1],
-                "entry_points": entry_exit_points,  # 시간 프레임별 맞춤 타점
-                "patterns": detected_patterns[:5],  # 상위 5개 패턴만
+                "name": config["name"],
+                "score": analysis.get("final_score", 50),
+                "signal": analysis.get("signal", "중립"),
+                "current_price": float(stock_data['Close'].iloc[-1]),
+                "entry_points": entry_exit_points,
+                "patterns": detected_patterns[:5],
                 "specialized_insights": specialized,
                 "full_analysis": analysis,
-                "recommendation": self._generate_timeframe_recommendation(
-                    timeframe, analysis, specialized
-                )
+                "recommendation": self._generate_timeframe_recommendation(timeframe, analysis, specialized)
             }
             
         except Exception as e:
-            logger.error(f"{ticker} {timeframe} 분석 실패: {e}")
+            logger.error(f"❌ {ticker} {timeframe} error: {e}")
             return self._empty_result(timeframe, str(e))
     
     def _apply_timeframe_specific_analysis(self,

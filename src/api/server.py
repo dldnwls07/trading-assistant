@@ -278,52 +278,36 @@ def get_final_ticker(ticker: str) -> str:
     
     return ticker
 
-from src.agents.multi_timeframe import MultiTimeframeAnalyzer
-multi_analyzer = MultiTimeframeAnalyzer()
+from src.services.integration_service import get_integration_service
+integration_service = get_integration_service()
 
 async def run_analysis(ticker: str, lang: str = "ko"):
-    """실제 분석 로직 공통 엔진 (30+ 정밀 데이터 통합 버전)"""
-    # 1. 티커 매핑
+    """
+    종합 분석 엔진 실행 (IntegrationService 위임)
+    - 기획된 Refactoring 2단계: Facade 패턴 적용
+    """
+    # 1. 티커 매핑 및 정규화
     final_ticker = get_final_ticker(ticker)
-    logger.info(f"Analyzing mapped ticker: {final_ticker} (Input: {ticker})")
+    logger.info(f"🔍 Analysis request for {final_ticker} (Input: {ticker})")
     
-    # 종목 정보 가져오기
-    import yfinance as yf
-    display_name = final_ticker
+    # 2. 통합 서비스를 통한 종합 분석 실행
+    raw_result = await integration_service.run_comprehensive_analysis(final_ticker)
+    
+    if raw_result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=raw_result.get("message"))
+    
+    # 3. 추가 메타데이터 보완 (Display Name 등)
     try:
+        import yfinance as yf
         stock = yf.Ticker(final_ticker)
         info = stock.info
         name = info.get('longName') or info.get('shortName') or final_ticker
-        display_name = f"{name} ({final_ticker})"
+        raw_result["display_name"] = f"{name} ({final_ticker})"
     except:
-        pass
+        raw_result["display_name"] = final_ticker
 
-    # 2. 다중 시간 프레임 분석 (30+ 데이터 포인트 자동 생성)
-    # 한국 주식은 KOSPI(^KS11), 미국 주식은 S&P 500(^GSPC) 기준
-    index_symbol = "^KS11" if final_ticker.endswith(('.KS', '.KQ')) else "^GSPC"
-    multi_res = await multi_analyzer.analyze_all_timeframes(final_ticker, index_ticker=index_symbol)
-    
-    # 3. 추가 데이터 (재무, 이벤트)
-    financials = await storage.get_financials(final_ticker)
-    if not financials:
-        await parser.fetch_and_save_financials(final_ticker)
-        financials = await storage.get_financials(final_ticker)
-    events = get_stock_events(final_ticker)
-    
-    # 4. 종합 데이터 병합
-    full_data = {
-        **multi_res,
-        "display_name": display_name,
-        "fundamental": analyst.fund.analyze(financials) if financials else {"score": 50, "summary": "재무 정보 없음"},
-        "events": events,
-        "final_score": multi_res.get("consensus", {}).get("avg_score", 50),
-        "signal": multi_res.get("consensus", {}).get("consensus", "중립")
-    }
-
-    # 5. AI 수석 분석가 리포트 생성 (30+ 데이터 기반 판단)
-    full_data['full_report'] = ai_analyzer.generate_report(full_data, lang=lang)
-    
-    return safe_serialize(full_data)
+    # 4. 최종 데이터 직렬화 및 반환
+    return safe_serialize(raw_result)
 
 @app.post("/analyze")
 async def analyze_post(req: AnalysisRequest):

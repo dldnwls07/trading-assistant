@@ -1,17 +1,10 @@
-"""
-중앙 설정 관리 모듈
-모든 하드코딩된 값을 환경변수 또는 기본값으로 관리
-"""
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from typing import Dict, List, Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, validator
 
-# Load environment variables
-load_dotenv()
-
-# ===========================================
-# 경로 설정
-# ===========================================
+# 기본 경로 설정
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 CHART_DIR = BASE_DIR / "charts"
@@ -20,95 +13,98 @@ CHART_DIR = BASE_DIR / "charts"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CHART_DIR.mkdir(parents=True, exist_ok=True)
 
-# ===========================================
-# 데이터베이스 설정
-# ===========================================
-DB_PATH = os.getenv("DB_PATH", "trading_assistant.db")
+class Settings(BaseSettings):
+    """
+    중앙 설정 관리 클래스 (Pydantic Settings)
+    환경 변수 및 기본값 자동 로드 및 유효성 검사
+    """
+    # API Keys
+    HF_TOKEN: str = Field(default="", env="HF_TOKEN")
+    GEMINI_API_KEY: str = Field(default="", env="GEMINI_API_KEY")
+    GROQ_API_KEY: str = Field(default="", env="GROQ_API_KEY")
+    FRED_API_KEY: str = Field(default="", env="FRED_API_KEY")
+    TRADING_ECONOMICS_KEY: str = Field(default="", env="TRADING_ECONOMICS_KEY")
+    
+    # DB & Infrastructure
+    DB_PATH: str = Field(default="trading_assistant.db", env="DB_PATH")
+    
+    # Analysis Configuration
+    DEFAULT_INTERVAL: str = "1d"
+    SUPPORTED_INTERVALS: List[str] = ["1m", "5m", "15m", "60m", "1d", "1wk"]
+    
+    ANALYSIS_WEIGHTS: Dict[str, float] = {
+        "technical": 0.6,
+        "fundamental": 0.4
+    }
+    
+    # RSI & Indicators
+    RSI_OVERSOLD: int = 30
+    RSI_OVERBOUGHT: int = 70
+    SMA_SHORT: int = 20
+    SMA_MEDIUM: int = 50
+    SMA_LONG: int = 200
+    BOLLINGER_WINDOW: int = 20
+    BOLLINGER_STD: int = 2
 
-# ===========================================
-# API 키 (환경변수에서 로드)
-# ===========================================
-HF_TOKEN = os.getenv("HF_TOKEN", "")
-TRADING_ECONOMICS_KEY = os.getenv("TRADING_ECONOMICS_KEY", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+    # Signal Thresholds
+    SIGNAL_THRESHOLDS: Dict[str, float] = {
+        "strong_buy": 85,
+        "buy": 70,
+        "hold_upper": 55,
+        "hold_lower": 40,
+        "sell": 25,
+        "strong_sell": 0
+    }
 
-# ===========================================
-# 분석 설정 (타임프레임 추가)
-# ===========================================
-DEFAULT_INTERVAL = "1d"  # 기본 일봉
-SUPPORTED_INTERVALS = ["1m", "5m", "15m", "60m", "1d", "1wk"]
+    # UI Design Tokens
+    UI_COLORS: Dict[str, str] = {
+        "bg_primary": "#1a1a2e",
+        "bg_secondary": "#16213e",
+        "bg_tertiary": "#0f3460",
+        "fg_primary": "#eaeaea",
+        "fg_secondary": "#aaaaaa",
+        "fg_muted": "#888888",
+        "accent": "#00d4ff",
+        "buy": "#ff4757",      # 상승
+        "sell": "#3742fa",     # 하락
+        "neutral": "#ffa502",
+        "success": "#4CAF50",
+        "warning": "#FF9800",
+        "error": "#F44336"
+    }
 
-ANALYSIS_WEIGHTS = {
-    "technical": 0.6,  # 기술적 분석 가중치
-    "fundamental": 0.4  # 기본적 분석 가중치
-}
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
-# RSI 임계값
-RSI_OVERSOLD = 30
-RSI_OVERBOUGHT = 70
+# 싱글톤 인스턴스 생성
+settings = Settings()
 
-# 이동평균 기간
-SMA_SHORT = 20
-SMA_MEDIUM = 50
-SMA_LONG = 200
+# 레거시 코드 호환성을 위한 전역 변수 유지
+HF_TOKEN = settings.HF_TOKEN
+GEMINI_API_KEY = settings.GEMINI_API_KEY
+GROQ_API_KEY = settings.GROQ_API_KEY
+DB_PATH = settings.DB_PATH
+DEFAULT_INTERVAL = settings.DEFAULT_INTERVAL
+SUPPORTED_INTERVALS = settings.SUPPORTED_INTERVALS
+ANALYSIS_WEIGHTS = settings.ANALYSIS_WEIGHTS
+RSI_OVERSOLD = settings.RSI_OVERSOLD
+RSI_OVERBOUGHT = settings.RSI_OVERBOUGHT
+SMA_SHORT = settings.SMA_SHORT
+SMA_MEDIUM = settings.SMA_MEDIUM
+SMA_LONG = settings.SMA_LONG
+BOLLINGER_WINDOW = settings.BOLLINGER_WINDOW
+BOLLINGER_STD = settings.BOLLINGER_STD
+SIGNAL_THRESHOLDS = settings.SIGNAL_THRESHOLDS
+UI_COLORS = settings.UI_COLORS
 
-# 볼린저 밴드 설정
-BOLLINGER_WINDOW = 20
-BOLLINGER_STD = 2
-
-# ===========================================
-# UI 스타일 설정
-# ===========================================
-UI_COLORS = {
-    "bg_primary": "#1a1a2e",
-    "bg_secondary": "#16213e",
-    "bg_tertiary": "#0f3460",
-    "fg_primary": "#eaeaea",
-    "fg_secondary": "#aaaaaa",
-    "fg_muted": "#888888",
-    "accent": "#00d4ff",
-    "buy": "#ff4757",      # 한국식: 빨간색 = 상승
-    "sell": "#3742fa",     # 한국식: 파란색 = 하락
-    "neutral": "#ffa502",
-    "success": "#4CAF50",
-    "warning": "#FF9800",
-    "error": "#F44336"
-}
-
-UI_FONTS = {
-    "primary": "맑은 고딕",
-    "fallback": "Arial"
-}
-
-# ===========================================
-# 신호 임계값
-# ===========================================
-SIGNAL_THRESHOLDS = {
-    "strong_buy": 85,
-    "buy": 70,
-    "hold_upper": 55,
-    "hold_lower": 40,
-    "sell": 25,
-    "strong_sell": 0
-}
-
-# ===========================================
-# 유효성 검사
-# ===========================================
 def validate_config():
-    """설정 유효성 검사"""
+    """설정 유효성 검사 (확장 가능)"""
     warnings = []
-    
-    if not HF_TOKEN or HF_TOKEN == "your_huggingface_token_here":
+    if not settings.HF_TOKEN:
         warnings.append("HF_TOKEN이 설정되지 않았습니다. AI 분석 기능이 제한됩니다.")
-    
+    if not settings.GEMINI_API_KEY:
+        warnings.append("GEMINI_API_KEY가 설정되지 않았습니다. 메인 AI 기능을 사용할 수 없습니다.")
     return warnings
-
-# 모듈 로드 시 검증
-_warnings = validate_config()
-if _warnings:
-    import logging
-    logger = logging.getLogger(__name__)
-    for w in _warnings:
-        logger.warning(w)

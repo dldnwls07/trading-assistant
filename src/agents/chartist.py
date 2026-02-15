@@ -40,13 +40,15 @@ class ChartMaster:
         # 4. 차티스트의 핵심 인사이트 (비즈니스 로직)
         insight = self._generate_chartist_insight(ticker, tech_res, patterns, current)
         
+        entry = tech_res.get('entry_points', {})
+        
         return {
             "ticker": ticker,
             "summary": insight['summary'],
-            "signal": tech_res['signal'],
+            "signal": tech_res.get('signal_text', '중립'), # signal_text가 없으면 기본값
             "score": tech_res['score'],
-            "support": tech_res['levels']['support'],
-            "resistance": tech_res['levels']['resistance'],
+            "support": entry.get('buy', 'N/A'),
+            "resistance": entry.get('target', 'N/A'),
             "patterns": [p['name'] for p in patterns[:3]],
             "commentary": insight['commentary']
         }
@@ -54,8 +56,11 @@ class ChartMaster:
     def _generate_chartist_insight(self, ticker: str, tech: Dict, patterns: List, current: pd.Series) -> Dict[str, str]:
         """전문 차티스트의 어조로 인사이트 생성"""
         
-        # 상태 파악
-        rsi = tech['indicators'].get('rsi', 50)
+        # 상태 파악 (TechnicalAnalyzer 반환 키에 맞춤)
+        rsi = tech.get('rsi', 50)
+        signal = tech.get('signal', 0)
+        
+        # sma_20 등이 current(AdvancedIndicators 결과)에 있는지 확인
         ma_status = "정배열" if current.get('sma_20', 0) > current.get('sma_60', 0) else "역배열"
         
         summary = f"현재 {ticker}는 {ma_status} 상태에서 "
@@ -70,12 +75,19 @@ class ChartMaster:
             best_pattern = patterns[0]['name']
             commentary += f"현재 차트에서 가장 눈에 띄는 건 '{best_pattern}' 패턴입니다. 이건 세력들이 물량을 매집하거나 털어낼 때 자주 나오는 형태죠. "
         
-        commentary += f"현재 지지선은 {tech['levels']['support'][0] if tech['levels']['support'] else '직전 저점'} 부근으로 보입니다. "
-        commentary += f"여기서 거래량이 실리면서 {tech['levels']['resistance'][0] if tech['levels']['resistance'] else '전고점'}을 돌파해준다면 아주 강력한 슈팅이 나올 수 있는 자리입니다. "
+        # entry_points에서 지지/저항 활용
+        entry = tech.get('entry_points', {})
+        sup_price = entry.get('buy', '직전 저점')
+        res_price = entry.get('target', '전고점')
         
-        if tech['signal'] == 'STRONG_BUY':
+        commentary += f"현재 지지선은 {sup_price} 부근으로 보입니다. "
+        commentary += f"여기서 거래량이 실리면서 {res_price}을(를) 돌파해준다면 아주 강력한 슈팅이 나올 수 있는 자리입니다. "
+        
+        # 점수 기반 신호 판단 (0~100)
+        score = tech.get('score', 50)
+        if score >= 75:
             commentary += "지금은 공격적으로 비중을 늘려가기 아주 좋은 셋업입니다. 손절가는 짧게 잡고 대응해보시길 권합니다."
-        elif tech['signal'] == 'STRONG_SELL':
+        elif score <= 35:
             commentary += "욕심 부릴 자리가 아닙니다. 일단 수익 실현하고 관망하면서 현금을 확보하는 게 상책입니다."
         else:
             commentary += "방향성이 나올 때까지 분할 매수로 접근하며 대응 영역으로 남겨두는 게 좋겠습니다."
