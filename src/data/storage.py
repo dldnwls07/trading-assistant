@@ -171,11 +171,23 @@ class DataStorage:
             
             new_records = []
             for _, row in df.iterrows():
+                if 'Date' not in row:
+                    logger.warning(f"Skipping row for {ticker}: 'Date' column missing")
+                    continue
                 date_val = row['Date']
+                
+                # Series인 경우 (중복 컬럼 발생 시) 첫 번째 값 선택
+                if isinstance(date_val, pd.Series):
+                    date_val = date_val.iloc[0]
+                
                 if isinstance(date_val, str):
                     try:
                         date_val = datetime.strptime(date_val.split(' ')[0], '%Y-%m-%d').date()
                     except: continue
+                
+                # Timestamp인 경우 date 객체로 변환
+                if hasattr(date_val, 'date'):
+                    date_val = date_val.date()
                 
                 if date_val in existing_dates: continue
                 
@@ -211,8 +223,22 @@ class DataStorage:
         async with self.get_session() as session:
             alert = Alert(**kwargs, created_at=datetime.now().date())
             session.add(alert)
-            await session.flush()
+            await session.commit()
             return alert.id
+
+    async def get_active_alerts(self) -> List[Alert]:
+        async with self.get_session() as session:
+            result = await session.execute(select(Alert).filter_by(is_active=1))
+            return list(result.scalars().all())
+
+    async def trigger_alert(self, alert_id: int):
+        async with self.get_session() as session:
+            await session.execute(
+                update(Alert)
+                .where(Alert.id == alert_id)
+                .values(is_active=0, triggered_at=datetime.now().date())
+            )
+            await session.commit()
 
     async def get_virtual_balance(self) -> float:
         async with self.get_session() as session:
@@ -238,6 +264,26 @@ class DataStorage:
         async with self.get_session() as session:
             result = await session.execute(select(VirtualPosition).filter(VirtualPosition.quantity > 0))
             return [{"ticker": p.ticker, "quantity": p.quantity, "avg_price": p.avg_price} for p in result.scalars().all()]
+
+    async def update_virtual_position(self, ticker: str, quantity: int, price: float, side: str):
+        async with self.get_session() as session:
+            result = await session.execute(select(VirtualPosition).filter_by(ticker=ticker))
+            pos = result.scalar_one_or_none()
+            
+            if side == 'BUY':
+                if not pos:
+                    pos = VirtualPosition(ticker=ticker, quantity=quantity, avg_price=price)
+                    session.add(pos)
+                else:
+                    new_total = pos.quantity + quantity
+                    pos.avg_price = ((pos.avg_price * pos.quantity) + (price * quantity)) / new_total
+                    pos.quantity = new_total
+            elif side == 'SELL':
+                if pos and pos.quantity >= quantity:
+                    pos.quantity -= quantity
+            
+            pos.updated_at = datetime.now().date()
+            await session.commit()
 
     @classmethod
     def reset_instance(cls):

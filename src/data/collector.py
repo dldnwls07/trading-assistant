@@ -36,12 +36,14 @@ class MarketDataCollector:
         if not isinstance(df.index, pd.RangeIndex):
             df = df.reset_index()
             
-        # 2. 대소문자 무관 컬럼 매핑
+        # 2. 대소문자 무관 컬럼 매핑 및 이름 변경
+        # 중복된 이름이 다른 케이스로 존재할 경우(예: date, Date)를 대비해 순차적으로 매핑
         col_map = {c.lower(): c for c in df.columns}
         rename_dict = {}
         
         target_v_map = {
             'date': 'Date',
+            'index': 'Date',  # reset_index() 대응
             'open': 'Open',
             'high': 'High',
             'low': 'Low',
@@ -53,25 +55,39 @@ class MarketDataCollector:
         
         for low_name, target in target_v_map.items():
             if low_name in col_map:
-                rename_dict[col_map[low_name]] = target
-            elif low_name.replace(' ', '') in col_map: # 'adjclose' 처리
-                rename_dict[col_map[low_name.replace(' ', '')]] = target
+                # 이미 동일한 이름의 컬럼이 목표 이름으로 존재하면 매핑 제외 (중복 방지)
+                if col_map[low_name] != target:
+                    rename_dict[col_map[low_name]] = target
+            elif low_name.replace(' ', '') in col_map:
+                if col_map[low_name.replace(' ', '')] != target:
+                    rename_dict[col_map[low_name.replace(' ', '')]] = target
         
         df = df.rename(columns=rename_dict)
         
-        # 3. 필수 컬럼 보완
+        # 3. 중복 컬럼 강제 제거 (표준화 핵심)
+        # 동일한 이름(Date, Open 등)이 여러 개 생겼을 경우 첫 번째만 남김
+        df = df.loc[:, ~df.columns.duplicated()]
+        
+        # 4. 필수 컬럼 보완
         if 'Adj Close' not in df.columns and 'Close' in df.columns:
             df['Adj Close'] = df['Close']
             
-        # 4. 타입 및 데이터 정제
+        # 5. 타입 및 데이터 정제
         if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'])
+            # Date가 여전히 Series가 아니면(DataFrame이면) 첫 번째 컬럼 선택
+            date_data = df['Date']
+            if isinstance(date_data, pd.DataFrame):
+                date_data = date_data.iloc[:, 0]
+            df['Date'] = pd.to_datetime(date_data)
             
         for col in ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+                col_data = df[col]
+                if isinstance(col_data, pd.DataFrame):
+                    col_data = col_data.iloc[:, 0]
+                df[col] = pd.to_numeric(col_data, errors='coerce')
         
-        # 5. 불필요한 컬럼 제거 및 순서 정렬
+        # 6. 불필요한 컬럼 제거 및 최종 규격 반환
         present_cols = [c for c in ['Date'] + self.REQUIRED_COLUMNS if c in df.columns]
         return df[present_cols].copy()
 
@@ -106,11 +122,17 @@ class MarketDataCollector:
                 df = await self._patch_realtime_korean(ticker, df)
             
             # 4. 날짜 포맷팅 (시계열 분석 완료 후 문자열 변환)
-            if not df.empty:
-                if interval in ["1d", "1wk", "1mo"]:
-                    df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
-                else:
-                    df['Date'] = df['Date'].dt.strftime('%Y-%m-%d %H:%M')
+            if not df.empty and 'Date' in df.columns:
+                # Series 확인 및 .dt 접근 안전성 확보
+                date_col = df['Date']
+                if isinstance(date_col, pd.DataFrame):
+                    date_col = date_col.iloc[:, 0]
+                
+                if hasattr(date_col, 'dt'):
+                    if interval in ["1d", "1wk", "1mo"]:
+                        df['Date'] = date_col.dt.strftime('%Y-%m-%d')
+                    else:
+                        df['Date'] = date_col.dt.strftime('%Y-%m-%d %H:%M')
             
             # 5. DB 저장
             if self.db and not df.empty:
