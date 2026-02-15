@@ -150,12 +150,31 @@ class MarketDataCollector:
                             else: start_date = end_date - timedelta(days=365)
                             
                             df = fdr.DataReader(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
+                            
+                            # [컬럼 통일] FDR 데이터를 yfinance 스타일로 변환
+                            if df is not None and not df.empty:
+                                # FDR US: ['Close', 'Open', 'High', 'Low', 'Volume', 'Change']
+                                # yfinance: ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+                                # 대소문자 및 Adj Close 보정
+                                df = df.rename(columns={
+                                    'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume',
+                                    'OPEN': 'Open', 'HIGH': 'High', 'LOW': 'Low', 'CLOSE': 'Close', 'VOLUME': 'Volume'
+                                })
+                                if 'Adj Close' not in df.columns and 'Close' in df.columns:
+                                    df['Adj Close'] = df['Close']
                     except Exception as e:
                         logger.warning(f"Primary fetch failed: {e}, attempting fallback...")
                         if not is_korean:
                             end_date = datetime.now()
                             start_date = end_date - timedelta(days=365)
                             df = fdr.DataReader(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
+                            if df is not None and not df.empty:
+                                df = df.rename(columns={
+                                    'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume',
+                                    'OPEN': 'Open', 'HIGH': 'High', 'LOW': 'Low', 'CLOSE': 'Close', 'VOLUME': 'Volume'
+                                })
+                                if 'Adj Close' not in df.columns and 'Close' in df.columns:
+                                    df['Adj Close'] = df['Close']
                         else:
                             raise e
                 
