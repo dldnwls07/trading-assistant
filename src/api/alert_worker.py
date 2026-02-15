@@ -43,7 +43,7 @@ async def check_alerts():
                             msg = f"**{alert.ticker}** 가격이 목표가 **{alert.target_value}** 아래로 하락했습니다!\n현재가: {current_price}\n메모: {alert.note}"
                         
                         if triggered:
-                            send_alert(msg, title=f"📈 가격 도달 알림: {alert.ticker}")
+                            await send_alert(msg, title=f"📈 가격 도달 알림: {alert.ticker}")
                             await storage.trigger_alert(alert.id)
                             logger.info(f"Alert triggered for {alert.ticker}")
 
@@ -73,7 +73,7 @@ async def main_loop():
                 msg = "📅 **오늘의 주요 경제 일정**\n\n"
                 for e in high_impact:
                     msg += f"• **{e['time']}** [{e['country']}] {e['title']} ({e['importance']})\n"
-                send_alert(msg, title="📢 경제 캘린더 알림")
+                await send_alert(msg, title="📢 경제 캘린더 알림")
             
             last_briefing_date = today
             

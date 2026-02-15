@@ -21,7 +21,7 @@ const Navigation = ({ settings, onOpenSettings }) => {
 
     const navItems = [
         { path: '/', label: t.analysis, icon: BarChart2 },
-        { path: '/chat', label: t.chat, icon: MessageSquare },
+        // { path: '/chat', label: t.chat, icon: MessageSquare },
         { path: '/calendar', label: t.calendar, icon: Calendar },
         { path: '/portfolio', label: t.portfolio, icon: PieChart },
         { path: '/screener', label: t.screener, icon: TrendingUp },

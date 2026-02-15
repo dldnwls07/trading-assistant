@@ -41,42 +41,53 @@ class IntegrationService:
         """한 종목에 대한 모든 관점의 종합 분석 실행"""
         logger.info(f"🔮 Orchestrating analysis for {ticker}...")
         
-        try:
-            # 1. 데이터 수집 (병렬)
-            daily_data_task = self.collector.get_ohlcv(ticker, period="2y", interval="1d")
-            
-            # 2. 추가 데이터 확보 (재무, 이벤트)
-            financials = await self.storage.get_financials(ticker)
-            if not financials:
+        async def ensure_financials():
+            """재무 데이터 확보 보장"""
+            f = await self.storage.get_financials(ticker)
+            if not f:
                 await self.parser.fetch_and_save_financials(ticker)
-                financials = await self.storage.get_financials(ticker)
+                
+        try:
+            # 1. 핵심 데이터 수집 (병렬 처리)
+            # 일봉 데이터와 재무 데이터는 서로 독립적이므로 동시에 가져옵니다.
+            # 하나라도 실패하면 즉시 에러를 반환하여 불필요한 연산을 방지합니다.
+            results = await asyncio.gather(
+                self.collector.get_ohlcv(ticker, period="2y", interval="1d"),
+                ensure_financials(),
+                return_exceptions=False
+            )
             
-            events_task = asyncio.to_thread(get_stock_events, ticker)
+            daily_df = results[0]
             
-            # 일봉 데이터 확보
-            daily_df = await daily_data_task
+            # 일봉 데이터 검증
             if daily_df is None or daily_df.empty:
                 raise ValueError(f"No daily data found for {ticker}")
             
-            # 3. 분석 태스크들 병렬 실행
+            # 2. 분석 태스크 병렬 실행 (데이터 확보 후 실행)
+            # - ML 예측 (CPU Bound -> to_thread)
+            # - 이벤트 수집 (IO/CPU Bound -> to_thread)
+            # - 멀티 타임프레임 분석 (Async IO Cloud)
             ml_task = asyncio.to_thread(self.ml_predictor.predict_next, daily_df)
+            events_task = asyncio.to_thread(get_stock_events, ticker)
             multi_res_task = self.multi_analyzer.analyze_all_timeframes(ticker)
-            events = await events_task
             
-            ml_res, multi_res = await asyncio.gather(ml_task, multi_res_task)
+            ml_res, events, multi_res = await asyncio.gather(
+                ml_task, 
+                events_task, 
+                multi_res_task
+            )
             
-            # 4. 결과 통합 및 가공
+            # 3. 결과 통합 및 가공
             final_result = {
                 **multi_res, # Multi-timeframe results (Score, Signal, Patterns, etc)
                 "ml_prediction": ml_res,
-                "events": events,
+                "events": events or {}, # None 방지
                 "fundamental_summary": multi_res.get("medium_term", {}).get("full_analysis", {}).get("fundamental", {}),
                 "timestamp": datetime.now().isoformat(),
                 "status": "success"
             }
             
-            # 5. 최종 종합 AI 리포트 생성 (모든 데이터 통합)
-            # multi_analyzer 내에서 이미 ai_report를 생성했을 수 있지만, 통합 단계에서 재정의 가능
+            # 4. 최종 종합 AI 리포트 생성 (모든 데이터 통합)
             final_result["full_report"] = self.ai_analyzer.generate_report(final_result)
             
             return final_result

@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import pandas as pd
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any

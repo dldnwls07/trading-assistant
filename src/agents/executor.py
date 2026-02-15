@@ -37,7 +37,7 @@ class OrderExecutor:
             
             if res.get("status") == "success":
                 msg = f"🟢 [실전 매매 SUCCESS] {ticker} {side} {quantity}주 @ {price}"
-                send_alert(msg, title="💰 Real Trading Alert")
+                await send_alert(msg, title="💰 Real Trading Alert")
             return res
 
     async def _get_exchange_rate(self) -> float:
@@ -102,7 +102,7 @@ class OrderExecutor:
             detail_msg = f"체결가: {curr_sym}{executed_price:.2f} (슬리피지 반영)\n수수료: {fees_krw:,.0f}원, 세금: {taxes_krw:,.0f}원"
             msg = f"🔵 [가상 매매 체결] {ticker} {side} {quantity}주\n{detail_msg}\n현재 잔고: {current_balance:,.0f}원"
             
-            send_alert(msg, title="🎮 Paper Trading Detail Alert")
+            await send_alert(msg, title="🎮 Paper Trading Detail Alert")
             return {
                 "status": "success", 
                 "ticker": ticker, 

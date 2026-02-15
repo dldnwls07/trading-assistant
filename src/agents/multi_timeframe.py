@@ -593,7 +593,7 @@ class MultiTimeframeAnalyzer:
         signal = analysis['signal']
         
         recommendations = []
-        recommendations.append(f"[{self.TIMEFRAMES[timeframe]['name']}]")
+        recommendations.append(f"[{self.timeframe_config[timeframe]['name']}]")
         recommendations.append(f"종합 신호: {signal} ({score}점)")
         
         if timeframe == "short":
@@ -714,7 +714,7 @@ class MultiTimeframeAnalyzer:
         """빈 결과 반환"""
         return {
             "timeframe": timeframe,
-            "name": self.TIMEFRAMES[timeframe]["name"],
+            "name": self.timeframe_config[timeframe]["name"],
             "error": reason,
             "score": 50,
             "signal": "분석 불가"

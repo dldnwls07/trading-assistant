@@ -30,18 +30,71 @@ from src.utils.serializer import safe_serialize
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+from contextlib import asynccontextmanager
+from src.data.loader import krx_loader
+
+# === Lifespan Manager ===
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Startup ---
+    logger.info("🚀 System Startup Initiated...")
+    
+    # 1. DB Initialization
+    await storage.initialize()
+    
+    # 2. Background Data Loading
+    asyncio.create_task(load_krx_bg())
+    
+    # 3. System Alert
+    from src.utils.notifications import send_alert
+    await send_alert("🚀 Trading Assistant v2.0 서버가 시작되었습니다.", title="System Startup")
+    
+    # 4. Background Workers
+    from src.api.alert_worker import check_alerts
+    from src.agents.auto_trader import AutoTrader
+    
+    async def alert_loop():
+        logger.info("AlertWorker loop started.")
+        while True:
+            try:
+                await check_alerts()
+            except Exception as e:
+                logger.error(f"Alert loop error: {e}")
+            await asyncio.sleep(60)
+
+    async def trader_loop():
+        logger.info("AutoTrader loop started.")
+        trader = AutoTrader()
+        while True:
+            try:
+                await trader.run_once()
+            except Exception as e:
+                logger.error(f"Trader loop error: {e}")
+            await asyncio.sleep(trader.trade_interval)
+
+    asyncio.create_task(alert_loop())
+    asyncio.create_task(trader_loop())
+    
+    yield # Server runs here
+    
+    # --- Shutdown ---
+    logger.info("🛑 Server is shutting down...")
+    from src.utils.notifications import send_alert
+    await send_alert("🛑 Trading Assistant v2.0 서버가 정상적으로 종료되었습니다.", title="System Shutdown")
+
 app = FastAPI(
     title="Trading Assistant API v2.0",
     description="AI-Powered Trading Analysis Server - Web, Mobile, Extension Ready",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
-# CORS (Production Security - No Wildcards)
+# === CORS (Production Security - No Wildcards) ===
 origins = [
     "http://localhost:5173",  # Vite Dev Server
     "http://127.0.0.1:5173",
     "http://localhost:3000",
-    "chrome-extension://*",   # Extension Support (Restrict ID in prod)
+    "chrome-extension://*",   # Extension Support
     "https://trading-assistant-all-in-one.onrender.com", # Production URL
 ]
 
@@ -74,9 +127,6 @@ def validate_ticker(ticker: str):
     return ticker.upper()
 
 # === Global Exception Handler ===
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global Error: {exc} Path: {request.url.path}")
@@ -100,113 +150,11 @@ portfolio_analyzer = PortfolioAnalyzer()
 screener = StockScreener()
 chart_master = ChartMaster()
 
-# 전역 데이터
-class KRXLoader:
-    def __init__(self):
-        self.df = None
-        self.loading = False
-    
-    def load(self):
-        if self.loading or self.df is not None: return
-        self.loading = True
-        try:
-            import FinanceDataReader as fdr
-            logger.info("Loading KRX data...")
-            self.df = fdr.StockListing('KRX')
-            logger.info(f"Loaded {len(self.df)} KRX symbols.")
-        except Exception as e:
-            logger.error(f"Failed to load KRX data: {e}")
-        finally:
-            self.loading = False
-
-    def search(self, query: str, limit: int = 10) -> List[Dict]:
-        if self.df is None: return []
-        try:
-            q = query.strip()
-            # 이름 또는 코드로 검색
-            mask = self.df['Name'].astype(str).str.contains(q, case=False, na=False) | \
-                   self.df['Code'].astype(str).str.contains(q, case=False, na=False)
-            results = self.df[mask].head(limit)
-            
-            candidates = []
-            for _, row in results.iterrows():
-                market = row['Market']
-                code = str(row['Code'])
-                
-                # 접미사 결정
-                suffix = ".KS" if market in ['KOSPI', 'KOSPI200'] else ".KQ"
-                
-                # 6자리 숫자인 경우에만 접미사 추가, 아니면 그대로 (ETF 등 확인 필요)
-                # TIGER ETF 같은 경우도 6자리 숫자 코드를 가짐
-                symbol = f"{code}{suffix}" if code.isdigit() and len(code) == 6 else code
-                
-                candidates.append({
-                    "symbol": symbol,
-                    "name": row['Name'],
-                    "exchange": market,
-                    "is_korean": True
-                })
-            return candidates
-        except Exception as e:
-            logger.error(f"KRX Search error: {e}")
-            return []
-
-krx_loader = KRXLoader()
-screener = StockScreener()
-
-@app.on_event("startup")
-async def startup_event():
-    global screener
-    
-    # DB 초기화 (테이블 생성 등)
-    await storage.initialize()
-    
-    screener = StockScreener() # Ensure initialized
-    
-    # 백그라운드 워커 시작
-    asyncio.create_task(load_krx_bg())
-    
-    # 시스템 시작 알림
-    from src.utils.notifications import send_alert
-    send_alert("🚀 Trading Assistant v2.0 서버가 시작되었습니다.", title="System Startup")
-    
-    # 알림 워커 시작 (alert_worker.py)
-    from src.api.alert_worker import check_alerts
-    async def alert_loop():
-        logger.info("AlertWorker loop started.")
-        while True:
-            try:
-                await check_alerts()
-            except Exception as e:
-                logger.error(f"Alert loop error: {e}")
-            await asyncio.sleep(60) # 1분마다 체크
-            
-    asyncio.create_task(alert_loop())
-    
-    # 자율 트레이더 시작 (auto_trader.py)
-    from src.agents.auto_trader import AutoTrader
-    trader = AutoTrader()
-    async def trader_loop():
-        logger.info("AutoTrader loop started.")
-        while True:
-            try:
-                await trader.run_once()
-            except Exception as e:
-                logger.error(f"Trader loop error: {e}")
-            await asyncio.sleep(trader.trade_interval)
-            
-    asyncio.create_task(trader_loop())
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """서버 종료 시 처리"""
-    from src.utils.notifications import send_alert
-    logger.info("Server is shutting down...")
-    send_alert("🛑 Trading Assistant v2.0 서버가 정상적으로 종료되었습니다.", title="System Shutdown")
-
 async def load_krx_bg():
     if krx_loader:
-        krx_loader.load()
+        await asyncio.to_thread(krx_loader.load)
+
+
 
 # === 모델 정의 ===
 class AnalysisRequest(BaseModel):
@@ -780,6 +728,108 @@ async def get_virtual_positions():
         return safe_serialize(processed_positions)
     except Exception as e:
         logger.error(f"Virtual positions error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === 백테스팅 & 최적화 (New) ===
+from src.backtest.schemas import BacktestRequest, OptimizeRequest
+from src.backtest.engine import BacktestEngine
+from src.backtest.optimizer import StrategyOptimizer
+from src.backtest.strategies.basic import RsiStrategy, SmaCrossStrategy
+
+# Initialize Engine
+backtest_engine = BacktestEngine(initial_capital=10000000)
+strategy_optimizer = StrategyOptimizer(backtest_engine)
+
+from src.backtest.strategies.advanced import BollingerStrategy, MacdStrategy
+
+# ... (Previous imports)
+
+@app.post("/api/backtest/run")
+async def run_backtest(req: BacktestRequest):
+    """
+    백테스팅 실행
+    """
+    try:
+        validate_ticker(req.ticker)
+        # 1. Fetch Data
+        df = await collector.get_ohlcv(req.ticker, period="2y", interval="1d") # Default period
+        
+        if df is None or df.empty:
+            raise HTTPException(status_code=404, detail="Historical data not found")
+            
+        # 2. Select Strategy
+        strategy = None
+        s_name = req.strategy_name.lower()
+        
+        if s_name == "rsi":
+            period = req.params.get("period", 14)
+            buy = req.params.get("buy_threshold", 30)
+            sell = req.params.get("sell_threshold", 70)
+            strategy = RsiStrategy(period=period, buy_threshold=buy, sell_threshold=sell)
+            
+        elif s_name in ["sma_cross", "golden_cross"]:
+            fast = req.params.get("fast", 20)
+            slow = req.params.get("slow", 60)
+            strategy = SmaCrossStrategy(fast=fast, slow=slow)
+            
+        elif s_name == "bollinger":
+            period = req.params.get("period", 20)
+            std = req.params.get("std_dev", 2.0)
+            strategy = BollingerStrategy(period=period, std_dev=std)
+            
+        elif s_name == "macd":
+            fast = req.params.get("fast", 12)
+            slow = req.params.get("slow", 26)
+            sig = req.params.get("signal", 9)
+            strategy = MacdStrategy(fast=fast, slow=slow, signal=sig)
+            
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown strategy: {req.strategy_name}")
+            
+        # 3. Run
+        result = backtest_engine.run(df, strategy)
+        return safe_serialize(result)
+        
+    except Exception as e:
+        logger.error(f"Backtest run error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/backtest/optimize")
+async def optimize_strategy(req: OptimizeRequest):
+    """
+    최적 파라미터 찾기 (Grid Search)
+    """
+    try:
+        validate_ticker(req.ticker)
+        df = await collector.get_ohlcv(req.ticker, period="2y", interval="1d")
+        
+        if df is None or df.empty:
+            raise HTTPException(status_code=404, detail="Historical data not found")
+            
+        strategy_cls = None
+        s_name = req.strategy_name.lower()
+        
+        if s_name == "rsi":
+            strategy_cls = RsiStrategy
+        elif s_name in ["sma_cross", "golden_cross"]:
+            strategy_cls = SmaCrossStrategy
+        elif s_name == "bollinger":
+            strategy_cls = BollingerStrategy
+        elif s_name == "macd":
+            strategy_cls = MacdStrategy
+        else:
+             raise HTTPException(status_code=400, detail=f"Unknown strategy: {req.strategy_name}")
+
+        result = strategy_optimizer.optimize(
+            df, 
+            strategy_cls, 
+            search_space=req.search_space,
+            target_metric=req.target_metric
+        )
+        return safe_serialize(result)
+        
+    except Exception as e:
+        logger.error(f"Optimization error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # === 다중 시간 프레임 분석 ===

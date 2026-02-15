@@ -129,8 +129,9 @@ class StockScreener:
         """분석 결과를 바탕으로 사람 친화적인 추천 이유 생성"""
         signal = analysis.get('signal', '중립')
         score = analysis.get('final_score', 50)
-        regime = analysis.get('market_regime', '횡보')
-        
+        if isinstance(regime, dict):
+            regime = regime.get('label', regime.get('regime', '횡보'))
+            
         return f"{signal} 신호 포착(점수: {score}). 시장 {regime} 국면에서 {style} 스타일에 적합한 기술적 패턴이 확인됨."
     
     async def get_recommendations(self, style: str = "balanced", market: str = "US", limit: int = 10) -> Dict[str, Any]:

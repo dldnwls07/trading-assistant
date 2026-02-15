@@ -100,7 +100,7 @@ class AutoTrader:
                 current_price = daily_df['Close'].iloc[-1]
                 reason = decision.get("reason", "AI 판단 매도")
                 logger.info(f"🚨 AI 매도 결정: {ticker} | 이유: {reason}")
-                send_alert(f"🤖 **AI의 매도 분석**: {reason}\n(분석 시간: {market_time})", title=f"AI Decision: {ticker} SELL")
+                await send_alert(f"🤖 **AI의 매도 분석**: {reason}\n(분석 시간: {market_time})", title=f"AI Decision: {ticker} SELL")
                 await self.executor.execute_trade(ticker, 'SELL', pos['quantity'], current_price)
 
     async def _check_and_buy(self):
@@ -137,7 +137,7 @@ class AutoTrader:
                 
                 if quantity > 0:
                     logger.info(f"🎯 AI 최종 승인 완료: {ticker} | 이유: {reason}")
-                    send_alert(f"🤖 **AI의 매수 판단 근거**:\n{reason}\n(분석 시간: {market_time})", title=f"AI Approved: {ticker} BUY")
+                    await send_alert(f"🤖 **AI의 매수 판단 근거**:\n{reason}\n(분석 시간: {market_time})", title=f"AI Approved: {ticker} BUY")
                     await self.executor.execute_trade(ticker, 'BUY', quantity, price)
                     break
 
@@ -185,7 +185,7 @@ async def start_auto_trading():
     """무한 루프 실행 (비동기)"""
     import asyncio
     trader = AutoTrader()
-    send_alert("🤖 AI 자율 트레이딩 워커(Async)가 시작되었습니다!", title="AutoTrader Start")
+    await send_alert("🤖 AI 자율 트레이딩 워커(Async)가 시작되었습니다!", title="AutoTrader Start")
     
     while True:
         await trader.run_once()
