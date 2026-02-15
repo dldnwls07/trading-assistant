@@ -6,13 +6,14 @@
 """
 import os
 import logging
+import asyncio
 from datetime import datetime
-from contextlib import contextmanager
-from typing import Optional, List, Dict
+from contextlib import asynccontextmanager
+from typing import Optional, List, Dict, Any
 
-from sqlalchemy import create_engine, Column, Integer, String, Float, Date, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship, Session
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, select, delete, update
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, selectinload
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -117,9 +118,9 @@ class VirtualTrade(Base):
 
 class DataStorage:
     """
-    싱글톤 패턴 데이터 저장소
-    - 하나의 인스턴스만 생성
-    - Context manager로 세션 관리
+    비동기 싱글톤 데이터 저장소
+    - SQLAlchemy Async Engine 및 Session 사용
+    - Async Context manager로 세션 관리
     """
     _instance: Optional['DataStorage'] = None
     _initialized: bool = False
@@ -130,175 +131,139 @@ class DataStorage:
         return cls._instance
     
     def __init__(self, db_path: Optional[str] = None):
-        # 이미 초기화된 경우 스킵
         if DataStorage._initialized:
             return
         
-        # 환경변수 또는 매개변수에서 DB 경로 가져오기
         self.db_path = db_path or os.getenv("DB_PATH", "trading_assistant.db")
-        self.engine = create_engine(f'sqlite:///{self.db_path}', echo=False)
-        Base.metadata.create_all(self.engine)
-        self.Session = sessionmaker(bind=self.engine)
+        # aiosqlite 드라이버 사용을 위해 접두어 변경
+        self.async_url = f'sqlite+aiosqlite:///{self.db_path}'
+        self.engine = create_async_engine(self.async_url, echo=False)
+        self.AsyncSessionLocal = async_sessionmaker(
+            bind=self.engine,
+            class_=AsyncSession,
+            expire_on_commit=False
+        )
         
         DataStorage._initialized = True
-        logger.info(f"Database initialized at {self.db_path}")
+        logger.info(f"Async Database initialized at {self.db_path}")
+
+    async def initialize(self):
+        """데이터베이스 테이블 생성 (비동기)"""
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
     
-    @contextmanager
-    def get_session(self):
+    @asynccontextmanager
+    async def get_session(self):
         """
-        Context manager로 세션 관리
-        사용법: with storage.get_session() as session:
+        비동기 Context manager로 세션 관리
         """
-        session = self.Session()
-        try:
-            yield session
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Session error: {e}")
-            raise
-        finally:
-            session.close()
+        async with self.AsyncSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"Async Session error: {e}")
+                raise
+            finally:
+                await session.close()
     
-    def save_stock(self, ticker: str, name: str = None, 
-                   sector: str = None, industry: str = None) -> Optional[Stock]:
+    async def save_stock(self, ticker: str, name: str = None, 
+                       sector: str = None, industry: str = None) -> Optional[Stock]:
         """종목 정보 저장/업데이트"""
-        with self.get_session() as session:
-            stock = session.query(Stock).filter_by(ticker=ticker).first()
+        async with self.get_session() as session:
+            result = await session.execute(select(Stock).filter_by(ticker=ticker))
+            stock = result.scalar_one_or_none()
+            
             if not stock:
                 stock = Stock(ticker=ticker, name=name, sector=sector, industry=industry)
                 session.add(stock)
             else:
-                if name:
-                    stock.name = name
-                if sector:
-                    stock.sector = sector
-                if industry:
-                    stock.industry = industry
+                if name: stock.name = name
+                if sector: stock.sector = sector
+                if industry: stock.industry = industry
             return stock
     
-    def save_price_history(self, ticker: str, df) -> int:
-        """
-        OHLCV 데이터 저장
-        Returns: 저장된 레코드 수
-        """
-        # 먼저 종목 확인
-        self.save_stock(ticker)
+    async def save_price_history(self, ticker: str, df) -> int:
+        """ OHLCV 데이터 저장 """
+        await self.save_stock(ticker)
         
-        with self.get_session() as session:
-            # 기존 날짜 조회 (중복 방지)
-            existing_dates = {
-                row[0] for row in session.query(PriceHistory.date)
-                .filter(PriceHistory.ticker == ticker)
-                .all()
-            }
+        async with self.get_session() as session:
+            # 기존 날짜 조회
+            result = await session.execute(select(PriceHistory.date).filter(PriceHistory.ticker == ticker))
+            existing_dates = {row[0] for row in result.all()}
             
             new_records = []
             for _, row in df.iterrows():
                 date_val = row['Date']
-                
-                # [강력 조치] 문자열 날짜를 Date 객체로 강제 변환
                 if isinstance(date_val, str):
                     try:
-                        from datetime import datetime
                         date_val = datetime.strptime(date_val.split(' ')[0], '%Y-%m-%d').date()
-                    except Exception as e:
-                        logger.warning(f"Date conversion failed for {date_val}: {e}")
-                        continue
+                    except: continue
                 
-                if date_val in existing_dates:
-                    continue
+                if date_val in existing_dates: continue
                 
-                record = PriceHistory(
-                    ticker=ticker,
-                    date=date_val,
-                    open=row['Open'],
-                    high=row['High'],
-                    low=row['Low'],
-                    close=row['Close'],
+                new_records.append(PriceHistory(
+                    ticker=ticker, date=date_val, open=row['Open'],
+                    high=row['High'], low=row['Low'], close=row['Close'],
                     volume=row.get('Volume', 0)
-                )
-                new_records.append(record)
+                ))
             
             if new_records:
-                session.bulk_save_objects(new_records)
+                session.add_all(new_records)
+                await session.flush()
                 logger.info(f"Saved {len(new_records)} new price records for {ticker}")
-            else:
-                logger.info(f"No new records to save for {ticker}")
-            
             return len(new_records)
     
-    def save_financials(self, ticker: str, financials_data: List[dict]) -> int:
-        """
-        재무 데이터 저장
-        Returns: 저장된 레코드 수
-        """
-        self.save_stock(ticker)
+    async def save_financials(self, ticker: str, financials_data: List[dict]) -> int:
+        """재무 데이터 저장"""
+        await self.save_stock(ticker)
         saved_count = 0
-        
-        with self.get_session() as session:
+        async with self.get_session() as session:
             for rec in financials_data:
-                # 기존 레코드 확인
-                existing = session.query(Financials).filter_by(
-                    ticker=ticker,
-                    period=rec['period'],
-                    report_date=rec['report_date']
-                ).first()
-                
+                result = await session.execute(select(Financials).filter_by(
+                    ticker=ticker, period=rec['period'], report_date=rec['report_date']
+                ))
+                existing = result.scalar_one_or_none()
                 if existing:
-                    # 업데이트
                     existing.revenue = rec.get('revenue')
                     existing.net_income = rec.get('net_income')
                     existing.eps = rec.get('eps')
                     existing.total_assets = rec.get('total_assets')
                     existing.total_liabilities = rec.get('total_liabilities')
                 else:
-                    # 신규 추가
-                    new_rec = Financials(
-                        ticker=ticker,
-                        period=rec['period'],
-                        report_date=rec['report_date'],
-                        revenue=rec.get('revenue'),
-                        net_income=rec.get('net_income'),
-                        eps=rec.get('eps'),
-                        total_assets=rec.get('total_assets'),
+                    session.add(Financials(
+                        ticker=ticker, period=rec['period'], report_date=rec['report_date'],
+                        revenue=rec.get('revenue'), net_income=rec.get('net_income'),
+                        eps=rec.get('eps'), total_assets=rec.get('total_assets'),
                         total_liabilities=rec.get('total_liabilities')
-                    )
-                    session.add(new_rec)
+                    ))
                     saved_count += 1
-            
-            logger.info(f"Saved {saved_count} financial records for {ticker}")
             return saved_count
     
-    def get_financials(self, ticker: str) -> List[Financials]:
+    async def get_financials(self, ticker: str) -> List[Financials]:
         """재무 데이터 조회"""
-        with self.get_session() as session:
-            # 세션 닫히기 전에 데이터 복사 (expunge 사용)
-            records = session.query(Financials).filter_by(ticker=ticker).all()
-            for r in records:
-                session.expunge(r)
-            return records
+        async with self.get_session() as session:
+            result = await session.execute(select(Financials).filter_by(ticker=ticker))
+            return list(result.scalars().all())
     
-    def get_price_history(self, ticker: str, limit: int = 365) -> List[PriceHistory]:
+    async def get_price_history(self, ticker: str, limit: int = 365) -> List[PriceHistory]:
         """가격 히스토리 조회"""
-        with self.get_session() as session:
-            records = (
-                session.query(PriceHistory)
+        async with self.get_session() as session:
+            result = await session.execute(
+                select(PriceHistory)
                 .filter_by(ticker=ticker)
                 .order_by(PriceHistory.date.desc())
                 .limit(limit)
-                .all()
             )
-            for r in records:
-                session.expunge(r)
-            return records
+            return list(result.scalars().all())
 
-    def save_alert(self, ticker: str, alert_type: str, 
-                   target_value: float = None, 
-                   event_type: str = None, 
-                   note: str = "") -> int:
+    async def save_alert(self, ticker: str, alert_type: str, 
+                       target_value: float = None, 
+                       event_type: str = None, 
+                       note: str = "") -> int:
         """알림 설정 저장"""
-        with self.get_session() as session:
+        async with self.get_session() as session:
             alert = Alert(
                 ticker=ticker,
                 alert_type=alert_type,
@@ -308,75 +273,74 @@ class DataStorage:
                 created_at=datetime.now().date()
             )
             session.add(alert)
-            session.flush()
+            await session.flush()
             return alert.id
 
-    def get_active_alerts(self, ticker: str = None) -> List[Alert]:
+    async def get_active_alerts(self, ticker: str = None) -> List[Alert]:
         """활성 알림 조회"""
-        with self.get_session() as session:
-            query = session.query(Alert).filter_by(is_active=1)
+        async with self.get_session() as session:
+            stmt = select(Alert).filter_by(is_active=1)
             if ticker:
-                query = query.filter_by(ticker=ticker)
-            records = query.all()
-            for r in records:
-                session.expunge(r)
-            return records
+                stmt = stmt.filter_by(ticker=ticker)
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
             
-    def trigger_alert(self, alert_id: int):
+    async def trigger_alert(self, alert_id: int):
         """알림 트리거 (비활성화)"""
-        with self.get_session() as session:
-            alert = session.query(Alert).filter_by(id=alert_id).first()
+        async with self.get_session() as session:
+            result = await session.execute(select(Alert).filter_by(id=alert_id))
+            alert = result.scalar_one_or_none()
             if alert:
                 alert.is_active = 0
                 alert.triggered_at = datetime.now().date()
 
     # --- 가상 매매 관련 메서드 ---
-    def get_virtual_balance(self) -> float:
+    async def get_virtual_balance(self) -> float:
         """가상 잔고 조회"""
-        with self.get_session() as session:
-            acc = session.query(VirtualAccount).first()
+        async with self.get_session() as session:
+            result = await session.execute(select(VirtualAccount))
+            acc = result.scalar_one_or_none()
             if not acc:
                 acc = VirtualAccount(balance=10000000.0)
                 session.add(acc)
-                session.flush()
+                await session.flush()
             return acc.balance
 
-    def update_virtual_balance(self, amount: float):
-        """가상 잔고 업데이트 (증감)"""
-        with self.get_session() as session:
-            acc = session.query(VirtualAccount).first()
+    async def update_virtual_balance(self, amount: float):
+        """가상 잔고 업데이트"""
+        async with self.get_session() as session:
+            result = await session.execute(select(VirtualAccount))
+            acc = result.scalar_one_or_none()
             if not acc:
                 acc = VirtualAccount(balance=10000000.0)
                 session.add(acc)
             acc.balance += amount
             acc.updated_at = datetime.now().date()
 
-    def get_virtual_positions(self) -> List[Dict]:
+    async def get_virtual_positions(self) -> List[Dict]:
         """가상 포지션 조회"""
-        with self.get_session() as session:
-            positions = session.query(VirtualPosition).filter(VirtualPosition.quantity > 0).all()
+        async with self.get_session() as session:
+            result = await session.execute(select(VirtualPosition).filter(VirtualPosition.quantity > 0))
+            positions = result.scalars().all()
             return [{"ticker": p.ticker, "quantity": p.quantity, "avg_price": p.avg_price} for p in positions]
 
-    def update_virtual_position(self, ticker: str, quantity: int, price: float, side: str):
+    async def update_virtual_position(self, ticker: str, quantity: int, price: float, side: str):
         """가상 포지션 업데이트"""
-        with self.get_session() as session:
-            pos = session.query(VirtualPosition).filter_by(ticker=ticker).first()
+        async with self.get_session() as session:
+            result = await session.execute(select(VirtualPosition).filter_by(ticker=ticker))
+            pos = result.scalar_one_or_none()
             if side == 'BUY':
                 if not pos:
-                    pos = VirtualPosition(ticker=ticker, quantity=quantity, avg_price=price)
-                    session.add(pos)
+                    session.add(VirtualPosition(ticker=ticker, quantity=quantity, avg_price=price))
                 else:
                     total_cost = (pos.avg_price * pos.quantity) + (price * quantity)
                     pos.quantity += quantity
                     pos.avg_price = total_cost / pos.quantity
             elif side == 'SELL' and pos:
                 pos.quantity -= quantity
-                if pos.quantity <= 0:
-                    session.delete(pos)
+                if pos.quantity <= 0: await session.delete(pos)
             
-            # 거래 이력 저장
-            trade = VirtualTrade(ticker=ticker, side=side, quantity=quantity, price=price)
-            session.add(trade)
+            session.add(VirtualTrade(ticker=ticker, side=side, quantity=quantity, price=price))
     
     @classmethod
     def reset_instance(cls):

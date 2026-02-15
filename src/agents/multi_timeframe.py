@@ -59,22 +59,11 @@ class MultiTimeframeAnalyzer:
         self.ai_analyzer = AIAnalyzer()
         self.collector = MarketDataCollector()
     
-    def analyze_all_timeframes(self, 
+    async def analyze_all_timeframes(self, 
                                ticker: str,
                                index_ticker: str = "^GSPC") -> Dict[str, Any]:
         """
-        모든 시간 프레임에 대한 종합 분석
-        
-        Returns:
-            {
-                "ticker": "AAPL",
-                "timestamp": "2024-...",
-                "short_term": {...},
-                "medium_term": {...},
-                "long_term": {...},
-                "consensus": {...},
-                "all_patterns": [...]  # 모든 시간 프레임에서 감지된 패턴
-            }
+        모든 시간 프레임에 대한 종합 분석 (비동기 병렬 처리)
         """
         logger.info(f"{ticker} 다중 시간 프레임 분석 시작")
         
@@ -88,12 +77,15 @@ class MultiTimeframeAnalyzer:
             "all_patterns": []
         }
         
-        # 각 시간 프레임별 분석
-        for tf_key in ["short", "medium", "long"]:
-            tf_result = self._analyze_timeframe(ticker, tf_key, index_ticker)
+        # 각 시간 프레임별 분석 태스크 생성
+        tasks = [self._analyze_timeframe(ticker, tf_key, index_ticker) for tf_key in ["short", "medium", "long"]]
+        tf_results = await asyncio.gather(*tasks)
+        
+        # 결과 매핑 및 패턴 수집
+        for i, tf_key in enumerate(["short", "medium", "long"]):
+            tf_result = tf_results[i]
             results[f"{tf_key}_term"] = tf_result
             
-            # 패턴 수집
             if tf_result and tf_result.get('patterns'):
                 for pattern in tf_result['patterns']:
                     pattern['timeframe'] = tf_key
@@ -102,27 +94,28 @@ class MultiTimeframeAnalyzer:
         # 종합 컨센서스 생성
         results["consensus"] = self._generate_consensus(results)
         
-        # AI 심층 리포트 생성 (Pillar 2)
+        # AI 수석 분석가 리포트 생성 (필요 시 비동기 지원 확인)
+        # ai_analyzer.generate_report가 비동기라면 await 필수
         results["ai_report"] = self.ai_analyzer.generate_report(results)
         
         return results
     
-    def _analyze_timeframe(self, 
+    async def _analyze_timeframe(self, 
                           ticker: str,
                           timeframe: str,
                           index_ticker: str) -> Dict[str, Any]:
-        """특정 시간 프레임 분석"""
+        """특정 시간 프레임 분석 (비동기)"""
         try:
             tf_config = self.TIMEFRAMES[timeframe]
             
-            # 데이터 수집
-            stock_data = self._fetch_data(
+            # 데이터 수집 (await 적용)
+            stock_data = await self._fetch_data(
                 ticker, 
                 period=tf_config["data_period"],
                 interval=tf_config["data_interval"]
             )
             
-            index_data = self._fetch_data(
+            index_data = await self._fetch_data(
                 index_ticker,
                 period=tf_config["data_period"],
                 interval=tf_config["data_interval"]
@@ -131,7 +124,7 @@ class MultiTimeframeAnalyzer:
             if stock_data is None or stock_data.empty:
                 return self._empty_result(timeframe, "데이터 수집 실패")
             
-            # 기본 분석 수행
+            # 종합 분석 수행
             analysis = self.analyst.analyze_ticker(
                 ticker=ticker,
                 daily_df=stock_data,
@@ -710,13 +703,13 @@ class MultiTimeframeAnalyzer:
         
         return "\n".join(lines)
     
-    def _fetch_data(self, ticker: str, period: str, interval: str) -> Optional[pd.DataFrame]:
-        """MarketDataCollector를 통한 데이터 수집 (한국 주식 대응)"""
+    async def _fetch_data(self, ticker: str, period: str, interval: str) -> Optional[pd.DataFrame]:
+        """MarketDataCollector를 통한 데이터 수집 (비동기)"""
         try:
             # interval 정규화 (yf와 collector 간 차이 조정)
             if interval == "1h": interval = "60m"
             
-            df = self.collector.get_ohlcv(ticker, period=period, interval=interval)
+            df = await self.collector.get_ohlcv(ticker, period=period, interval=interval)
             
             # 인덱스를 Datetime으로 설정 (패턴 감정 등에서 필요)
             if df is not None and not df.empty:

@@ -9,13 +9,15 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
+from fastapi.security import APIKeyHeader
+from starlette.status import HTTP_403_FORBIDDEN
 
 # 프로젝트 모듈
 from src.data.collector import MarketDataCollector
 from src.data.storage import get_storage
 from src.data.parser import FinancialParser
-from src.agents.analyst import StockAnalyst
-from src.agents.ai_analyzer import AIAnalyzer, get_stock_events
+from src.agents.analyst import SmartAnalyst
+from src.agents.ai_analyzer import AIReportGenerator
 from src.agents.chat_assistant import ChatAssistant
 from src.agents.event_calendar import EventCalendar
 from src.agents.portfolio_analyzer import PortfolioAnalyzer
@@ -152,8 +154,52 @@ screener = StockScreener()
 async def startup_event():
     import asyncio
     global screener
+    
+    # DB 초기화 (테이블 생성 등)
+    await storage.initialize()
+    
     screener = StockScreener() # Ensure initialized
+    
+    # 백그라운드 워커 시작
     asyncio.create_task(load_krx_bg())
+    
+    # 시스템 시작 알림
+    from src.utils.notifications import send_alert
+    send_alert("🚀 Trading Assistant v2.0 서버가 시작되었습니다.", title="System Startup")
+    
+    # 알림 워커 시작 (alert_worker.py)
+    from src.api.alert_worker import check_alerts
+    async def alert_loop():
+        logger.info("AlertWorker loop started.")
+        while True:
+            try:
+                await check_alerts()
+            except Exception as e:
+                logger.error(f"Alert loop error: {e}")
+            await asyncio.sleep(60) # 1분마다 체크
+            
+    asyncio.create_task(alert_loop())
+    
+    # 자율 트레이더 시작 (auto_trader.py)
+    from src.agents.auto_trader import AutoTrader
+    trader = AutoTrader()
+    async def trader_loop():
+        logger.info("AutoTrader loop started.")
+        while True:
+            try:
+                await trader.run_once()
+            except Exception as e:
+                logger.error(f"Trader loop error: {e}")
+            await asyncio.sleep(trader.trade_interval)
+            
+    asyncio.create_task(trader_loop())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """서버 종료 시 처리"""
+    from src.utils.notifications import send_alert
+    logger.info("Server is shutting down...")
+    send_alert("🛑 Trading Assistant v2.0 서버가 정상적으로 종료되었습니다.", title="System Shutdown")
 
 async def load_krx_bg():
     if krx_loader:
@@ -255,10 +301,10 @@ async def run_analysis(ticker: str, lang: str = "ko"):
     multi_res = multi_analyzer.analyze_all_timeframes(final_ticker, index_ticker=index_symbol)
     
     # 3. 추가 데이터 (재무, 이벤트)
-    financials = storage.get_financials(final_ticker)
+    financials = await storage.get_financials(final_ticker)
     if not financials:
-        parser.fetch_and_save_financials(final_ticker)
-        financials = storage.get_financials(final_ticker)
+        await parser.fetch_and_save_financials(final_ticker)
+        financials = await storage.get_financials(final_ticker)
     events = get_stock_events(final_ticker)
     
     # 4. 종합 데이터 병합
@@ -339,12 +385,12 @@ async def get_history(ticker: str, interval: str = "1d"):
         if final_ticker.endswith('.ks'): final_ticker = final_ticker[:-3] + '.KS'
         if final_ticker.endswith('.kq'): final_ticker = final_ticker[:-3] + '.KQ'
 
-        df = collector.get_ohlcv(final_ticker, period=period, interval=actual_interval)
+        df = await collector.get_ohlcv(final_ticker, period=period, interval=actual_interval)
         
         # 데이터가 없는 경우 상위 인터벌로 대체 시도
         if (df is None or df.empty) and interval in ["1m", "5m", "15m", "30m", "60m"]:
             logger.info(f"Interval {interval} failed for {ticker}, falling back to daily.")
-            df = collector.get_ohlcv(final_ticker, period="1y", interval="1d")
+            df = await collector.get_ohlcv(final_ticker, period="1y", interval="1d")
             interval = "1d"
 
         if df is None or df.empty:
@@ -663,7 +709,7 @@ async def get_top_movers(market: str = "US"):
 async def get_exchange_rate():
     """실시간 USD/KRW 환율 조회"""
     try:
-        df = collector.get_ohlcv("USDKRW=X", period="1d", interval="1m")
+        df = await collector.get_ohlcv("USDKRW=X", period="1d", interval="1m")
         if df is not None and not df.empty:
             rate = float(df['Close'].iloc[-1])
             return {"rate": rate, "ticker": "USDKRW=X", "timestamp": datetime.now().isoformat()}
@@ -677,7 +723,7 @@ async def get_exchange_rate():
 async def get_virtual_account():
     """가상 계좌 잔고 및 정보 조회"""
     try:
-        balance = storage.get_virtual_balance()
+        balance = await storage.get_virtual_balance()
         return {
             "balance": balance,
             "currency": "KRW",
@@ -693,7 +739,7 @@ async def get_virtual_account():
 async def get_virtual_positions():
     """가상 계좌 보유 종목 조회"""
     try:
-        positions = storage.get_virtual_positions()
+        positions = await storage.get_virtual_positions()
         
         # 현재 환율 가져오기
         rate_res = await get_exchange_rate()
@@ -704,7 +750,7 @@ async def get_virtual_positions():
             ticker = pos['ticker']
             is_usd = not (ticker.endswith(('.KS', '.KQ')) or ticker.isdigit())
             
-            df = collector.get_ohlcv(ticker, period="1d", interval="1m")
+            df = await collector.get_ohlcv(ticker, period="1d", interval="1m")
             current_price = df['Close'].iloc[-1] if df is not None and not df.empty else pos['avg_price']
             
             # 통화별 가치 계산 (원화 기준 합산을 위해)
@@ -744,10 +790,10 @@ async def multi_timeframe_analysis(ticker: str):
         
         # 여러 시간 프레임 데이터 수집
         timeframes = {
-            "1h": collector.get_ohlcv(final_ticker, period="60d", interval="60m"),
-            "4h": collector.get_ohlcv(final_ticker, period="120d", interval="1h"),
-            "1d": collector.get_ohlcv(final_ticker, period="1y", interval="1d"),
-            "1wk": collector.get_ohlcv(final_ticker, period="5y", interval="1wk"),
+            "1h": await collector.get_ohlcv(final_ticker, period="60d", interval="60m"),
+            "4h": await collector.get_ohlcv(final_ticker, period="120d", interval="1h"),
+            "1d": await collector.get_ohlcv(final_ticker, period="1y", interval="1d"),
+            "1wk": await collector.get_ohlcv(final_ticker, period="5y", interval="1wk"),
         }
         
         # 각 시간 프레임별 분석

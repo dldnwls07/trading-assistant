@@ -36,74 +36,75 @@ class PortfolioAnalyzer:
             except Exception as e:
                 logger.error(f"KIS 클라이언트 초기화 실패: {e}")
     
-    def _get_exchange_rate(self) -> float:
-        """실시간 USD/KRW 환율 가져오기 (yfinance)"""
+    async def _get_exchange_rate(self) -> float:
+        """실시간 USD/KRW 환율 가져오기 (MarketDataCollector 활용)"""
         try:
-            import yfinance as yf
-            ticker = yf.Ticker("USDKRW=X")
-            data = ticker.history(period="1d")
-            if not data.empty:
-                return float(data['Close'].iloc[-1])
-            return 1350.0  # 폴백 값
+            from src.data.collector import MarketDataCollector
+            collector = MarketDataCollector(use_db=False)
+            df = await collector.get_ohlcv("USDKRW=X", period="1d", interval="1m")
+            if df is not None and not df.empty:
+                return float(df['Close'].iloc[-1])
+            return 1350.0
         except Exception as e:
             logger.warning(f"환율 수집 실패: {e}")
             return 1350.0
 
-    def analyze_portfolio(self, 
+    async def analyze_portfolio(self, 
                          holdings: List[Dict[str, Any]],
                          index_ticker: str = "^GSPC") -> Dict[str, Any]:
         """
-        포트폴리오 종합 분석 (실시간 환율 반영)
+        포트폴리오 종합 분석 (비동기 병렬 처리)
         """
         logger.info(f"포트폴리오 분석 시작: {len(holdings)}개 종목")
         
-        # 실시간 환율 적용
-        USD_KRW = self._get_exchange_rate()
+        # 실시간 환율 적용 (await)
+        USD_KRW = await self._get_exchange_rate()
         logger.info(f"적용 환율: 1 USD = {USD_KRW} KRW")
         
-        # 1. 각 종목 개별 분석 및 통화 통합
+        # 1. 각 종목 개별 분석 (비동기 병렬 처리)
+        tasks = [self._analyze_holding(h['ticker'], index_ticker) for h in holdings]
+        individual_analyses = await asyncio.gather(*tasks)
+        
         stock_analyses = []
         total_value_usd = 0
         total_cost_usd = 0
         
-        for holding in holdings:
+        for i, holding in enumerate(holdings):
+            analysis = individual_analyses[i]
+            if not analysis: continue
+            
             ticker = holding['ticker']
             shares = holding.get('shares', 0)
             avg_price = holding.get('avg_price', 0)
+            current_price = analysis['current_price']
             
-            # 현재 가격 및 분석
-            analysis = self._analyze_holding(ticker, index_ticker)
-            if analysis:
-                current_price = analysis['current_price']
-                
-                # 통화 판별 (.KS, .KQ면 원화)
-                is_krw = ticker.endswith(('.KS', '.KQ'))
-                
-                pos_value_native = shares * current_price
-                cost_value_native = shares * avg_price
-                
-                # 달러로 통합
-                pos_value_usd = pos_value_native / USD_KRW if is_krw else pos_value_native
-                cost_value_usd = cost_value_native / USD_KRW if is_krw else cost_value_native
-                
-                total_value_usd += pos_value_usd
-                total_cost_usd += cost_value_usd
-                
-                stock_analyses.append({
-                    "ticker": ticker,
-                    "shares": shares,
-                    "avg_price": avg_price,
-                    "current_price": current_price,
-                    "position_value": pos_value_native,
-                    "position_value_usd": pos_value_usd,
-                    "profit_loss": (current_price - avg_price) * shares,
-                    "profit_loss_pct": ((current_price - avg_price) / avg_price * 100) if avg_price > 0 else 0,
-                    "ai_score": analysis['final_score'],
-                    "signal": analysis['signal'],
-                    "sector": analysis.get('sector', 'Unknown'),
-                    "is_krw": is_krw,
-                    "analysis": analysis
-                })
+            is_krw = ticker.endswith(('.KS', '.KQ'))
+            
+            pos_value_native = shares * current_price
+            cost_value_native = shares * avg_price
+            
+            # 달러로 통합
+            pos_value_usd = pos_value_native / USD_KRW if is_krw else pos_value_native
+            cost_value_usd = cost_value_native / USD_KRW if is_krw else cost_value_native
+            
+            total_value_usd += pos_value_usd
+            total_cost_usd += cost_value_usd
+            
+            stock_analyses.append({
+                "ticker": ticker,
+                "shares": shares,
+                "avg_price": avg_price,
+                "current_price": current_price,
+                "position_value": pos_value_native,
+                "position_value_usd": pos_value_usd,
+                "profit_loss": (current_price - avg_price) * shares,
+                "profit_loss_pct": ((current_price - avg_price) / avg_price * 100) if avg_price > 0 else 0,
+                "ai_score": analysis['final_score'],
+                "signal": analysis['signal'],
+                "sector": analysis.get('sector', 'Unknown'),
+                "is_krw": is_krw,
+                "analysis": analysis
+            })
         
         # 2. 비중 계산 (달러 가치 기준)
         for stock in stock_analyses:
@@ -112,10 +113,10 @@ class PortfolioAnalyzer:
         # 3. 포트폴리오 종합 점수 (가중 평균)
         portfolio_score = sum(s['ai_score'] * s['weight'] / 100 for s in stock_analyses)
         
-        # 4. 상관관계 분석 (추가)
-        correlations = self._calculate_correlations([s['ticker'] for s in stock_analyses])
+        # 4. 상관관계 분석 (비동기)
+        correlations = await self._calculate_correlations([s['ticker'] for s in stock_analyses])
         
-        # 5. 분산도 평가 (상관계수 반영)
+        # 5. 분산도 평가
         diversification = self._evaluate_diversification(stock_analyses, correlations)
         
         # 6. 리스크 밸런스 평가
@@ -124,8 +125,8 @@ class PortfolioAnalyzer:
         # 7. 투자 스타일 일치도 평가
         style_alignment = self._evaluate_style_alignment(stock_analyses)
         
-        # 8. 리밸런싱 제안 생성
-        rebalancing = self._generate_rebalancing_suggestions(stock_analyses, total_value_usd)
+        # 8. 리밸런싱 제안 생성 (비동기)
+        rebalancing = await self._generate_rebalancing_suggestions(stock_analyses, total_value_usd)
         
         return {
             "portfolio_score": round(portfolio_score, 1),
@@ -141,52 +142,44 @@ class PortfolioAnalyzer:
             "summary": self._generate_summary(portfolio_score, diversification, risk_balance, style_alignment)
         }
 
-    def sync_with_kis(self) -> List[Dict[str, Any]]:
-        """
-        KIS API를 통해 실제 계좌 잔고 및 종목 정보를 가져옵니다.
-        """
-        if not self.kis:
-            logger.warning("KIS 클라이언트가 설정되지 않았습니다.")
-            return []
-            
+    async def sync_with_kis(self) -> List[Dict[str, Any]]:
+        """KIS API 동기화 (비동기 지원 시 await 가능하도록 구성)"""
+        if not self.kis: return []
+        # KIS API는 현재 동기 요청 위주이므로 to_thread 등으로 래핑 가능
+        return await asyncio.to_thread(self._sync_with_kis_sync)
+
+    def _sync_with_kis_sync(self) -> List[Dict[str, Any]]:
+        # 기존 sync_with_kis 로직...
         try:
-            # 국내 주식 잔고 조회
             domestic_res = self.kis.get_stock_balance(is_domestic=True)
             holdings = []
-            
             if domestic_res.get("rt_cd") == "0":
                 for item in domestic_res.get("output1", []):
-                    ticker = item.get("pdno")  # 종목번호
+                    ticker = item.get("pdno")
                     if ticker:
                         holdings.append({
-                            "ticker": f"{ticker}.KS" if int(ticker) < 900000 else f"{ticker}.KQ", # 단순화된 마켓 판별
+                            "ticker": f"{ticker}.KS" if int(ticker) < 900000 else f"{ticker}.KQ",
                             "shares": int(item.get("hldg_qty", 0)),
                             "avg_price": float(item.get("pchs_avg_pric", 0)),
                             "name": item.get("prdt_name")
                         })
-            
-            # TODO: 해외 주식 잔고 조회 통합
-            
             return holdings
-        except Exception as e:
-            logger.error(f"KIS 잔고 동기화 중 오류: {e}")
-            return []
+        except: return []
 
-    
-    def _analyze_holding(self, ticker: str, index_ticker: str) -> Optional[Dict[str, Any]]:
-        """개별 종목 분석"""
+    async def _analyze_holding(self, ticker: str, index_ticker: str) -> Optional[Dict[str, Any]]:
+        """개별 종목 비동기 분석"""
         try:
-            import yfinance as yf
+            from src.data.collector import MarketDataCollector
+            collector = MarketDataCollector(use_db=False)
             
-            # 데이터 수집
-            stock = yf.Ticker(ticker)
-            daily_df = stock.history(period="1y")
-            index_df = yf.Ticker(index_ticker).history(period="1y")
+            # 데이터 수집 (비동기)
+            daily_df = await collector.get_ohlcv(ticker, period="1y")
+            index_df = await collector.get_ohlcv(index_ticker, period="1y")
             
-            if daily_df.empty:
+            if daily_df is None or daily_df.empty:
                 return None
             
-            # 종합 분석
+            # 종합 분석 (동기 호출)
             analysis = self.analyst.analyze_ticker(
                 ticker=ticker,
                 daily_df=daily_df,
@@ -196,27 +189,34 @@ class PortfolioAnalyzer:
                 sentiment_data=None
             )
             
+            # 섹터 정보 등 추가
+            analysis['current_price'] = daily_df['Close'].iloc[-1]
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"{ticker} 분석 실패: {e}")
+            return None
+            
             # 섹터 정보 추가
             info = stock.info
             analysis['sector'] = info.get('sector', 'Unknown')
             analysis['current_price'] = daily_df['Close'].iloc[-1]
             
             return analysis
-            
-        except Exception as e:
-            logger.error(f"{ticker} 분석 실패: {e}")
-            return None
     
-    def _calculate_correlations(self, tickers: List[str]) -> Dict[str, Any]:
-        """종목 간 상관관계 계산 및 전문가용 리스크 지표(Beta, Sharpe) 산출"""
+    async def _calculate_correlations(self, tickers: List[str]) -> Dict[str, Any]:
+        """종목 간 상관관계 계산 (비동기 처리)"""
         if not tickers:
             return {"matrix": {}, "avg_correlation": 0, "beta": 1.0, "sharpe": 0}
             
         try:
+            # yf.download는 차단 이슈가 잦으므로 asyncio.to_thread로 격리 호출
             import yfinance as yf
-            # 시장 지수(^GSPC)를 포함하여 최근 1년 데이터 수집
-            all_tickers = list(set(tickers + ["^GSPC"]))
-            data = yf.download(all_tickers, period="1y")['Close']
+            def _download():
+                all_tickers = list(set(tickers + ["^GSPC"]))
+                return yf.download(all_tickers, period="1y")['Close']
+                
+            data = await asyncio.to_thread(_download)
             
             # yf.download 결과가 DataFrame인지 Series인지 확인
             if isinstance(data, pd.Series):
@@ -263,11 +263,12 @@ class PortfolioAnalyzer:
                 "sharpe": round(float(sharpe), 2)
             }
         except Exception as e:
-            logger.error(f"리스크 지표 계산 실패: {e}")
+            logger.error(f"상관관계 계산 실패: {e}")
             return {"matrix": {}, "avg_correlation": 0.5, "beta": 1.0, "sharpe": 0}
 
     def _evaluate_diversification(self, holdings: List[Dict[str, Any]], correlations: Dict[str, Any]) -> Dict[str, Any]:
         """분산도 평가 (섹터 집중도 + 상관관계 반영)"""
+        from collections import Counter
         sectors = [h['sector'] for h in holdings]
         sector_counts = Counter(sectors)
         
@@ -371,10 +372,10 @@ class PortfolioAnalyzer:
             "message": message
         }
     
-    def _generate_rebalancing_suggestions(self, 
+    async def _generate_rebalancing_suggestions(self, 
                                          holdings: List[Dict[str, Any]],
                                          total_value: float) -> Dict[str, Any]:
-        """리밸런싱 제안 생성"""
+        """리밸런싱 제안 생성 (비동기)"""
         suggestions = {
             "sell": [],
             "buy": [],
@@ -402,14 +403,14 @@ class PortfolioAnalyzer:
         # 2. 매수 추천 (사용자 스타일에 맞는 신규 종목)
         user_style = self.profiler.get_style()
         if user_style:
-            # 현재 보유하지 않은 유망 종목 찾기
             current_tickers = {h['ticker'] for h in holdings}
             sample_pool = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "JPM", "V", "WMT", "JNJ", "PG"]
             candidates = [t for t in sample_pool if t not in current_tickers]
             
             if candidates:
-                top_picks = self.screener.screen_stocks(
-                    tickers=candidates[:5],  # 샘플로 5개만
+                # screener.screen_stocks가 비동기로 변경됨
+                top_picks = await self.screener.screen_stocks(
+                    tickers=candidates[:5],
                     investor_style=user_style,
                     top_n=2
                 )

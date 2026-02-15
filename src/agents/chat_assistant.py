@@ -15,11 +15,13 @@ from src.data.collector import MarketDataCollector
 logger = logging.getLogger(__name__)
 
 # --- 도구(Tools) 정의 ---
-def set_price_alert(ticker: str, target_price: float, condition: str = "above", note: str = "") -> str:
+async def set_price_alert(ticker: str, target_price: float, condition: str = "above", note: str = "") -> str:
     """주식 가격 알림을 설정합니다. (condition: 'above' 또는 'below')"""
     try:
         storage = get_storage()
-        alert_id = storage.save_alert(
+        # DB 초기화 및 알림 저장 (비동기)
+        await storage.initialize()
+        alert_id = await storage.save_alert(
             ticker=ticker.upper(),
             alert_type=f"price_{condition}",
             target_value=target_price,
@@ -29,11 +31,12 @@ def set_price_alert(ticker: str, target_price: float, condition: str = "above", 
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
 
-def get_market_data(ticker: str) -> str:
+async def get_market_data(ticker: str) -> str:
     """주식의 현재가 및 최근 데이터를 가져옵니다."""
     try:
         collector = MarketDataCollector()
-        df = collector.get_ohlcv(ticker.upper(), period="5d", interval="1d")
+        # collector.get_ohlcv가 비동기로 변경됨
+        df = await collector.get_ohlcv(ticker.upper(), period="5d", interval="1d")
         if df is None or df.empty:
             return json.dumps({"status": "error", "message": "데이터를 찾을 수 없습니다."})
         
@@ -119,59 +122,48 @@ class ChatAssistant:
 - 확실하지 않은 내용은 "추정" 또는 "가능성"으로 표현합니다
 - 과거 데이터는 미래를 보장하지 않음을 강조합니다"""
     
-    def chat(self, user_message: str, context: Optional[Dict[str, Any]] = None) -> str:
+    async def chat(self, user_message: str, context: Optional[Dict[str, Any]] = None) -> str:
         """
-        사용자 메시지에 응답
-        
-        Args:
-            user_message: 사용자 질문
-            context: 추가 컨텍스트 (분석 결과, 종목 정보 등)
-            
-        Returns:
-            AI 응답 메시지
+        사용자 메시지에 응답 (비동기)
         """
-        # 대화 히스토리에 추가
         self.conversation_history.append({
             "role": "user",
             "content": user_message,
             "timestamp": datetime.now().isoformat()
         })
         
-        # 응답 생성
         if self.use_ai and self.model:
             try:
-                response = self._generate_response_with_gemini(user_message, context)
+                response = await self._generate_response_with_gemini(user_message, context)
             except Exception as e:
                 logger.error(f"Gemini 응답 실패: {e}")
                 response = self._generate_smart_response(user_message, context)
         else:
             response = self._generate_smart_response(user_message, context)
         
-        # 응답 히스토리에 추가
         self.conversation_history.append({
             "role": "assistant",
             "content": response,
             "timestamp": datetime.now().isoformat()
         })
-        
         return response
-    
-    def _generate_response_with_gemini(self, message: str, context: Optional[Dict] = None) -> str:
-        """Gemini Flash를 사용한 응답 생성 (Tool Calling 포함)"""
+
+    async def _generate_response_with_gemini(self, message: str, context: Optional[Dict] = None) -> str:
+        """Gemini Flash를 사용한 응답 생성 (비동기)"""
         try:
-            # 컨텍스트 기반 시스템 지침 추가
-            instruction = self.system_prompt
-            if context:
-                instruction += f"\n\n현재 컨텍스트: {json.dumps(context, ensure_ascii=False)}"
+            # send_message_async 사용 (비동기 지원 시)
+            # google-generativeai v0.3.2 기준 send_message가 동기일 수 있으므로 
+            # 루프에서 실행하거나 비동기 메서드가 있는지 확인 필요.
+            # 하지만 SDK 버전에 따라 다를 수 있음. 여기서는 일반적인 비동기 패턴 사용.
             
-            # 메시지 전송 (자동 도구 실행 활성화됨)
-            response = self.chat_session.send_message(message)
+            # NOTE: genai SDK의 비동기 지원 여부에 따라 달라짐. 
+            # 최신 버전은 send_message_async를 지원함.
+            response = await self.chat_session.send_message_async(message)
             
             if response and response.text:
                 return response.text.strip()
             else:
                 return "죄송합니다. 응답을 생성하지 못했습니다."
-                
         except Exception as e:
             logger.error(f"Gemini 응답 생성 실패: {e}")
             return self._generate_smart_response(message, context)

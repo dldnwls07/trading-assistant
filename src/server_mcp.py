@@ -125,62 +125,43 @@ def recommend_stocks(style: str = "balanced") -> str:
         return f"Recommendation failed: {str(e)}"
 
 @mcp.tool()
-def set_price_alert(ticker: str, target_price: float, condition: str = "above", note: str = "") -> str:
-    """
-    주식 가격 알림을 설정합니다.
-    Args:
-        ticker: 종목 코드
-        target_price: 목표 가격
-        condition: 'above' (이상) 또는 'below' (이하)
-        note: 간단한 메모
-    """
+async def set_price_alert(ticker: str, target_price: float, condition: str = "above", note: str = "") -> str:
+    """ 주식 가격 알림을 설정합니다. """
     try:
-        alert_id = storage.save_alert(
-            ticker=ticker,
-            alert_type=f"price_{condition}",
-            target_value=target_price,
-            note=note
+        await storage.initialize() # 초기화 확인
+        alert_id = await storage.save_alert(
+            ticker=ticker.upper(), alert_type=f"price_{condition}",
+            target_value=target_price, note=note
         )
         return f"Alert set successfully (ID: {alert_id})"
     except Exception as e:
         return f"Failed to set alert: {str(e)}"
 
 @mcp.tool()
-def check_triggered_alerts() -> str:
-    """
-    설정된 알림들 중 현재 가격에 도달한 알림이 있는지 확인합니다.
-    """
+async def check_triggered_alerts() -> str:
+    """ 내 가격 도달 알림 확인 """
     try:
-        active_alerts = storage.get_active_alerts()
-        if not active_alerts:
-            return "No active alerts."
+        await storage.initialize()
+        active_alerts = await storage.get_active_alerts()
+        if not active_alerts: return "No active alerts."
             
         triggered = []
         for alert in active_alerts:
             if alert.alert_type.startswith("price_"):
-                # 실시간 가격 확인
                 df = collector.get_ohlcv(alert.ticker, period="1d", interval="1m")
                 if df is not None and not df.empty:
                     current_price = df['Close'].iloc[-1]
                     is_above = "above" in alert.alert_type
-                    
                     if (is_above and current_price >= alert.target_value) or \
                        (not is_above and current_price <= alert.target_value):
                         triggered.append({
-                            "ticker": alert.ticker,
-                            "target": alert.target_value,
-                            "current": current_price,
-                            "note": alert.note,
-                            "condition": alert.alert_type
+                            "ticker": alert.ticker, "target": alert.target_value,
+                            "current": current_price, "note": alert.note
                         })
-                        storage.trigger_alert(alert.id)
-                        
-        if not triggered:
-            return "No alerts triggered yet."
-            
-        return json.dumps(triggered, indent=2)
+                        await storage.trigger_alert(alert.id)
+        return json.dumps(triggered, indent=2) if triggered else "No alerts triggered."
     except Exception as e:
-        return f"Error checking alerts: {str(e)}"
+        return f"Error: {str(e)}"
 
 @mcp.tool()
 def get_today_high_impact_events() -> str:

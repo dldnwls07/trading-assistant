@@ -23,20 +23,20 @@ class MarketDataCollector:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.db = DataStorage() if use_db else None
         
-    def get_smart_data(self, ticker: str) -> Dict[str, Optional[pd.DataFrame]]:
+    async def get_smart_data(self, ticker: str) -> Dict[str, Optional[pd.DataFrame]]:
         """
         Smart Analysis를 위한 멀티 타임프레임 데이터(일봉 + 1시간봉)를 한 번에 수집
         """
         results = {
-            "daily": self.get_ohlcv(ticker, period="1y", interval="1d"),
-            "hourly": self.get_ohlcv(ticker, period="60d", interval="60m")
+            "daily": await self.get_ohlcv(ticker, period="1y", interval="1d"),
+            "hourly": await self.get_ohlcv(ticker, period="60d", interval="60m")
         }
         return results
 
-    def get_realtime_data(self, ticker: str) -> Dict[str, Any]:
+    async def get_realtime_data(self, ticker: str) -> Dict[str, Any]:
         """
         실시간 시세 데이터 조회 (Naver/Yahoo)
-        한국 주식: Naver Polling API
+        한국 주식: Naver Polling API 강화
         미국 주식: yfinance
         """
         clean_ticker = ticker.replace('.KS', '').replace('.KQ', '')
@@ -53,46 +53,42 @@ class MarketDataCollector:
 
         if is_korean:
             try:
-                # Naver Polling API
+                # Naver Polling API (상세 데이터 추출)
                 url = f"https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:{clean_ticker}"
                 headers = {'User-Agent': 'Mozilla/5.0'}
-                res = requests.get(url, headers=headers, timeout=5)
+                
+                # 비동기 요청을 위해 aiohttp를 사용할 수도 있지만, 
+                # 여기서는 기존 requests를 루프에서 실행하거나 유지 (추후 aiohttp로 교체 가능)
+                res = await asyncio.to_thread(requests.get, url, headers=headers, timeout=5)
                 
                 if res.status_code == 200:
                     data = res.json()
-                    item = data['result']['areas'][0]['datas'][0]
-                    
-                    realtime_data.update({
-                        "current_price": float(item.get('nv', 0)), # 현재가
-                        "change": float(item.get('cv', 0)),      # 전일비
-                        "change_rate": float(item.get('cr', 0)), # 등락률
-                        "volume": int(item.get('aq', 0)),        # 거래량
-                        "market_status": item.get('ms', 'CLOSE') # 장상태
-                    })
-                    return realtime_data
+                    if data.get('result') and data['result']['areas']:
+                        item = data['result']['areas'][0]['datas'][0]
+                        realtime_data.update({
+                            "current_price": float(item.get('nv', 0)),
+                            "change": float(item.get('cv', 0)),
+                            "change_rate": float(item.get('cr', 0)),
+                            "volume": int(item.get('aq', 0)),
+                            "market_status": item.get('ms', 'CLOSE'),
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        return realtime_data
             except Exception as e:
                 logger.error(f"Naver realtime fetch error: {e}")
         
-        # Fallback / Global stocks (Yahoo)
+        # Yahoo Finance Fallback
         try:
             stock = yf.Ticker(ticker)
-            # Try fast_info first (newer yfinance)
-            if hasattr(stock, 'fast_info'):
-                info = stock.fast_info
+            info = await asyncio.to_thread(lambda: stock.fast_info if hasattr(stock, 'fast_info') else stock.info)
+            if hasattr(info, 'last_price'):
                 realtime_data.update({
                     "current_price": info.last_price,
-                    "previous_close": info.previous_close,
-                    "volume": info.last_volume
+                    "change": info.last_price - info.previous_close if hasattr(info, 'previous_close') else 0,
+                    "change_rate": ((info.last_price - info.previous_close) / info.previous_close * 100) if hasattr(info, 'previous_close') and info.previous_close else 0,
+                    "volume": info.last_volume if hasattr(info, 'last_volume') else 0
                 })
-                # Calculate change manually if needed
-                if info.previous_close:
-                    change = info.last_price - info.previous_close
-                    rate = (change / info.previous_close) * 100
-                    realtime_data['change'] = change
-                    realtime_data['change_rate'] = rate
             else:
-                # Legacy info
-                info = stock.info
                 realtime_data.update({
                     "current_price": info.get('currentPrice') or info.get('regularMarketPrice'),
                     "change": info.get('regularMarketChange'),
@@ -104,14 +100,12 @@ class MarketDataCollector:
             
         return realtime_data
 
-    def get_ohlcv(self, ticker: str, period: str = "1y", interval: str = "1d", retries: int = 3) -> Optional[pd.DataFrame]:
+    async def get_ohlcv(self, ticker: str, period: str = "1y", interval: str = "1d", retries: int = 3) -> Optional[pd.DataFrame]:
         """
-        OHLCV 데이터를 수집하며, 실패 시 재시도 로직을 포함함.
-        한국 주식은 FinanceDataReader(네이버), 미국 주식은 yfinance 사용.
+        OHLCV 데이터를 수집하며, 비동기 DB 저장을 지원합니다.
         """
         import FinanceDataReader as fdr
         
-        # 한국 종목 판별 (6자리 숫자)
         clean_ticker = ticker.replace('.KS', '').replace('.KQ', '')
         is_korean = clean_ticker.isdigit() and len(clean_ticker) == 6
         
@@ -119,74 +113,76 @@ class MarketDataCollector:
             try:
                 logger.info(f"Fetching {interval} data for {ticker} (Attempt {attempt+1}/{retries})...")
                 
-                # [차단 해결] 브라우저 헤더를 포함한 세션 생성
-                session = requests.Session()
-                session.headers.update({
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                })
-                
-                if is_korean and interval in ['1d', '1wk', '1mo']:
-                    # [한국 주식] FinanceDataReader 사용 (일봉 이상만 지원)
-                    end_date = datetime.now()
-                    if period == '1y': start_date = end_date - timedelta(days=365)
-                    elif period == '60d': start_date = end_date - timedelta(days=60)
-                    else: start_date = end_date - timedelta(days=365)
+                # Fetching data in thread pool
+                def _fetch():
+                    session = requests.Session()
+                    session.headers.update({
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    })
                     
-                    df = fdr.DataReader(clean_ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
-                    
-                else:
-                    # [미국 주식] yfinance 시도 (세션 적용)
-                    try:
-                        stock = yf.Ticker(ticker, session=session)
-                        df = stock.history(period=period, interval=interval)
-                        
-                        # [긴급 백업] yfinance가 비어있다면 FinanceDataReader(인베스팅) 시도
-                        if (df is None or df.empty) and not is_korean and interval in ['1d', '1wk', '1mo']:
-                            logger.warning(f"yfinance blocked for {ticker}, falling back to FinanceDataReader...")
-                            # FDR은 period 대신 start, end 사용
-                            end_date = datetime.now()
-                            if period == '1y': start_date = end_date - timedelta(days=365)
-                            elif period == '60d': start_date = end_date - timedelta(days=60)
-                            else: start_date = end_date - timedelta(days=365)
+                    if is_korean and interval in ['1d', '1wk', '1mo']:
+                        # [한국 주식] FDR (Naver/KRX)
+                        end_date = datetime.now()
+                        start_date = end_date - timedelta(days=365) if period == '1y' else end_date - timedelta(days=60)
+                        df = fdr.DataReader(clean_ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
+                        if df is not None and not df.empty:
+                            df.reset_index(inplace=True)
+                        return df
+                    else:
+                        # [미국/해외 주식] yfinance -> FDR (Investing.com) 백업
+                        try:
+                            # 1. yfinance 시도
+                            stock = yf.Ticker(ticker, session=session)
+                            df = stock.history(period=period, interval=interval)
                             
-                            df = fdr.DataReader(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
-                            
-                            # [컬럼 통일] FDR 데이터를 yfinance 스타일로 변환
-                            if df is not None and not df.empty:
-                                # FDR US: ['Close', 'Open', 'High', 'Low', 'Volume', 'Change']
-                                # yfinance: ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
-                                # 대소문자 및 Adj Close 보정
-                                df = df.rename(columns={
-                                    'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume',
-                                    'OPEN': 'Open', 'HIGH': 'High', 'LOW': 'Low', 'CLOSE': 'Close', 'VOLUME': 'Volume'
-                                })
-                                if 'Adj Close' not in df.columns and 'Close' in df.columns:
-                                    df['Adj Close'] = df['Close']
-                    except Exception as e:
-                        logger.warning(f"Primary fetch failed: {e}, attempting fallback...")
-                        if not is_korean:
-                            end_date = datetime.now()
-                            start_date = end_date - timedelta(days=365)
-                            df = fdr.DataReader(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
-                            if df is not None and not df.empty:
-                                df = df.rename(columns={
-                                    'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume',
-                                    'OPEN': 'Open', 'HIGH': 'High', 'LOW': 'Low', 'CLOSE': 'Close', 'VOLUME': 'Volume'
-                                })
-                                if 'Adj Close' not in df.columns and 'Close' in df.columns:
-                                    df['Adj Close'] = df['Close']
-                        else:
-                            raise e
+                            # 데이터가 비어있으면 FDR 백업 시도
+                            if (df is None or df.empty) and interval in ['1d', '1wk', '1mo']:
+                                raise ValueError("yfinance returned empty data")
+                            return df
+                        except Exception as e:
+                            logger.warning(f"yfinance failed for {ticker}: {e}, trying FDR (Investing.com) fallback...")
+                            if interval in ['1d', '1wk', '1mo']:
+                                try:
+                                    end_date = datetime.now()
+                                    start_date = end_date - timedelta(days=365) if period == '1y' else end_date - timedelta(days=60)
+                                    
+                                    # FDR 미국 주식은 NASDAQ: 접두어를 붙여야 인베스팅닷컴 소스를 확실히 사용함
+                                    fdr_ticker = f"{ticker}" if ":" in ticker else f"NASDAQ:{ticker}"
+                                    df = fdr.DataReader(fdr_ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
+                                    
+                                    if df is not None and not df.empty:
+                                        # FDR/Investing.com 컬럼명 표준화 (대소문자 무관하게 매칭)
+                                        col_map = {c.lower(): c for c in df.columns}
+                                        rename_dict = {}
+                                        for target in ['Open', 'High', 'Low', 'Close', 'Volume']:
+                                            for source in [target.lower(), target.upper(), target]:
+                                                if source in df.columns:
+                                                    rename_dict[source] = target
+                                                    break
+                                        
+                                        df = df.rename(columns=rename_dict)
+                                        if 'Adj Close' not in df.columns and 'Close' in df.columns:
+                                            df['Adj Close'] = df['Close']
+                                        
+                                        # 인덱스 리셋 (Date 컬럼 확보)
+                                        df = df.reset_index().rename(columns={'index': 'Date', 'date': 'Date', 'Date': 'Date'})
+                                        return df
+                                except Exception as e2:
+                                    logger.error(f"FDR fallback also failed for {ticker}: {e2}")
+                                    return None
+                            return None
+
+                df = await asyncio.to_thread(_fetch)
                 
                 # [방어코드] 반환값 검증 (빈 데이터 시 재시도)
                 if df is None or df.empty:
                     # 한국 주식 분봉 요청 실패 시 -> 일봉 데이터라도 반환 시도 (User Experience)
                     if is_korean and interval not in ['1d', '1wk', '1mo'] and attempt == retries - 1:
                         logger.warning(f"Intraday data failed for {ticker}, falling back to daily.")
-                        return self.get_ohlcv(ticker, period="1y", interval="1d", retries=1)
+                        return await self.get_ohlcv(ticker, period="1y", interval="1d", retries=1)
                         
                     if attempt < retries - 1:
-                        time_module.sleep(1)
+                        await asyncio.sleep(1)
                         continue
                     logger.warning(f"No data found for {ticker}")
                     return None
@@ -212,30 +208,29 @@ class MarketDataCollector:
                             last_date = df['Date'].iloc[-1].date()
                             today = datetime.now().date()
                             
-                            # 마지막 데이터가 오늘이 아니면 실시간 조회 시도... (단, 장중이거나 장마감 직후)
-                            if last_date < today or (datetime.now().hour >= 9 and datetime.now().hour < 16):
-                                # 첫 시도에만 패치
-                                if attempt == 0:
-                                    rt = self.get_realtime_data(ticker)
-                                    if rt and rt.get('current_price'):
-                                        # 이미 오늘 날짜가 있으면 업데이트, 없으면 추가
-                                        # 간단하게: 오늘 날짜가 있으면 drop하고 새로 추가?
-                                        # 아니면 그냥 마지막 row 확인.
-                                        
-                                        # 여기선 간단히: 오늘 날짜가 마지막 row 날짜와 같으면 pass (이미 있을 수 있음)
-                                        # 다르다면 append
-                                        if last_date != today:
-                                            new_row = pd.DataFrame([{
-                                                'Date': pd.Timestamp(today),
-                                                'Open': rt['current_price'], # 시가 정보 부족 시 현재가 대체
-                                                'High': rt['current_price'],
-                                                'Low': rt['current_price'],
-                                                'Close': rt['current_price'],
-                                                'Volume': rt['volume'],
-                                                'Change': rt['change_rate'] / 100 if rt.get('change_rate') else 0
-                                            }])
-                                            if not new_row.empty:
-                                                df = pd.concat([df, new_row], ignore_index=True)
+                            # 장중(09:00~15:40)이거나 데이터가 지연된 경우 Naver 실시간가 반영
+                            now = datetime.now()
+                            if last_date < today and (9 <= now.hour <= 16):
+                                rt = await self.get_realtime_data(ticker)
+                                if rt and rt.get('current_price'):
+                                    # 이미 오늘 날짜가 있으면 업데이트, 없으면 추가
+                                    # 간단하게: 오늘 날짜가 있으면 drop하고 새로 추가?
+                                    # 아니면 그냥 마지막 row 확인.
+                                    
+                                    # 여기선 간단히: 오늘 날짜가 마지막 row 날짜와 같으면 pass (이미 있을 수 있음)
+                                    # 다르다면 append
+                                    if last_date != today:
+                                        new_row = pd.DataFrame([{
+                                            'Date': pd.Timestamp(today),
+                                            'Open': rt['current_price'], # 시가 정보 부족 시 현재가 대체
+                                            'High': rt['current_price'],
+                                            'Low': rt['current_price'],
+                                            'Close': rt['current_price'],
+                                            'Volume': rt['volume'],
+                                            'Change': rt['change_rate'] / 100 if rt.get('change_rate') else 0
+                                        }])
+                                        if not new_row.empty:
+                                            df = pd.concat([df, new_row], ignore_index=True)
 
                         if interval in ["1d", "1wk", "1mo"]:
                             df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
@@ -247,7 +242,9 @@ class MarketDataCollector:
                 # DB 저장
                 if self.db:
                     try:
-                        self.db.save_price_history(ticker, df)
+                        # storage.save_price_history가 비동기라고 가정 (이전 Phase에서 수정됨)
+                        await self.db.initialize()
+                        await self.db.save_price_history(ticker, df)
                     except Exception as e:
                         logger.error(f"DB save error for {ticker}: {e}")
                 
@@ -268,9 +265,9 @@ class MarketDataCollector:
                 return df
                 
             except Exception as e:
-                logger.error(f"Error on attempt {attempt+1}: {e}")
+                logger.error(f"Error for {ticker}: {e}")
                 if attempt < retries - 1:
-                    time_module.sleep(1)
+                    await asyncio.sleep(1)
                 else:
                     return None
         return None

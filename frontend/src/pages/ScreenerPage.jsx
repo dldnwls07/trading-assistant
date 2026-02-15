@@ -1,10 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { TrendingUp, ArrowUpRight, ArrowDownRight, Filter, Rocket, Briefcase, Scale, Globe } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    Search,
+    ArrowUpRight,
+    ArrowDownRight,
+    Zap,
+    TrendingUp,
+    BarChart2,
+    Globe,
+    ChevronRight,
+    Activity,
+    Filter,
+    Rocket,
+    Briefcase,
+    Scale
+} from 'lucide-react';
 import { useTranslation } from '../utils/translations';
-
-const API_BASE = 'http://127.0.0.1:8000';
+import api from '../utils/api';
 
 const ScreenerPage = ({ settings }) => {
     const navigate = useNavigate();
@@ -12,38 +25,30 @@ const ScreenerPage = ({ settings }) => {
     const [market, setMarket] = useState('US');
     const [recommendations, setRecommendations] = useState([]);
     const [topMovers, setTopMovers] = useState({ gainers: [], losers: [] });
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
 
     const isDark = settings?.darkMode;
     const t = useTranslation(settings);
 
     useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const backendStyle = settings.tradingStyle || 'balanced';
+                const [recRes, topRes] = await Promise.all([
+                    api.get(`/api/screener/recommendations?style=${backendStyle}&market=${market}`),
+                    api.get(`/api/screener/top-movers?market=${market}`)
+                ]);
+                setRecommendations(recRes.data.recommendations || []);
+                setTopMovers(topRes.data || { gainers: [], losers: [] });
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        };
         fetchData();
-    }, [style, market]);
-
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            // UI 스타일 ID를 백엔드 스타일 ID로 매핑
-            const styleMap = {
-                'aggressive': 'aggressive_growth',
-                'balanced': 'balanced',
-                'conservative': 'value'
-            };
-            const backendStyle = styleMap[style] || 'balanced';
-
-            const [recRes, movRes] = await Promise.all([
-                axios.get(`${API_BASE}/api/screener/recommendations?style=${backendStyle}&market=${market}`),
-                axios.get(`${API_BASE}/api/screener/top-movers?market=${market}`)
-            ]);
-            setRecommendations(recRes.data.recommendations || []);
-            setTopMovers(movRes.data || { gainers: [], losers: [] });
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    }, [market, settings.tradingStyle, style]);
 
     const styles = [
         { id: 'aggressive', label: t.scr_aggressive, icon: Rocket, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
@@ -52,8 +57,8 @@ const ScreenerPage = ({ settings }) => {
     ];
 
     const markets = [
-        { id: 'US', label: t.scr_market_us },
-        { id: 'KR', label: t.scr_market_kr }
+        { id: 'US', label: t.scr_market_us || 'US' },
+        { id: 'KR', label: t.scr_market_kr || 'KR' }
     ];
 
     const handleAnalyze = (ticker) => {
@@ -63,7 +68,6 @@ const ScreenerPage = ({ settings }) => {
     return (
         <div className={`min-h-screen py-10 transition-colors duration-300 ${isDark ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
-                {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-3xl font-black flex items-center gap-3">
@@ -77,16 +81,12 @@ const ScreenerPage = ({ settings }) => {
                         </p>
                     </div>
 
-                    {/* Market Toggle */}
                     <div className={`p-1 rounded-2xl border flex gap-1 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'}`}>
                         {markets.map(m => (
                             <button
                                 key={m.id}
                                 onClick={() => setMarket(m.id)}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${market === m.id
-                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                    : 'text-gray-400 hover:text-gray-600'
-                                    }`}
+                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${market === m.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-400 hover:text-gray-600'}`}
                             >
                                 {m.label}
                             </button>
@@ -94,9 +94,8 @@ const ScreenerPage = ({ settings }) => {
                     </div>
                 </div>
 
-                {/* Top Movers Section */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className={`shadow-xl rounded-3xl border overflow-hidden transition-all ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+                    <div className={`shadow-xl rounded-3xl border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
                         <div className={`px-6 py-4 border-b flex justify-between items-center ${isDark ? 'bg-emerald-500/5 border-slate-800' : 'bg-emerald-50 border-gray-100'}`}>
                             <h3 className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>
                                 <ArrowUpRight className="w-4 h-4" /> {t.scr_gainers} ({market})
@@ -104,11 +103,7 @@ const ScreenerPage = ({ settings }) => {
                         </div>
                         <ul className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-gray-50'}`}>
                             {topMovers.gainers?.slice(0, 5).map((stock, idx) => (
-                                <li
-                                    key={idx}
-                                    onClick={() => handleAnalyze(stock.ticker)}
-                                    className={`px-8 py-4 flex justify-between items-center cursor-pointer transition-colors ${isDark ? 'hover:bg-slate-800/50' : 'hover:bg-gray-50'}`}
-                                >
+                                <li key={idx} onClick={() => handleAnalyze(stock.ticker)} className={`px-8 py-4 flex justify-between items-center cursor-pointer transition-colors ${isDark ? 'hover:bg-slate-800/50' : 'hover:bg-gray-50'}`}>
                                     <span className="font-black text-sm">{stock.ticker}</span>
                                     <span className="font-black text-emerald-500 text-sm">+{stock.change}%</span>
                                 </li>
@@ -117,7 +112,7 @@ const ScreenerPage = ({ settings }) => {
                         </ul>
                     </div>
 
-                    <div className={`shadow-xl rounded-3xl border overflow-hidden transition-all ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+                    <div className={`shadow-xl rounded-3xl border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
                         <div className={`px-6 py-4 border-b flex justify-between items-center ${isDark ? 'bg-rose-500/5 border-slate-800' : 'bg-rose-50 border-gray-100'}`}>
                             <h3 className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${isDark ? 'text-rose-400' : 'text-rose-800'}`}>
                                 <ArrowDownRight className="w-4 h-4" /> {t.scr_losers} ({market})
@@ -125,11 +120,7 @@ const ScreenerPage = ({ settings }) => {
                         </div>
                         <ul className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-gray-50'}`}>
                             {topMovers.losers?.slice(0, 5).map((stock, idx) => (
-                                <li
-                                    key={idx}
-                                    onClick={() => handleAnalyze(stock.ticker)}
-                                    className={`px-8 py-4 flex justify-between items-center cursor-pointer transition-colors ${isDark ? 'hover:bg-slate-800/50' : 'hover:bg-gray-50'}`}
-                                >
+                                <li key={idx} onClick={() => handleAnalyze(stock.ticker)} className={`px-8 py-4 flex justify-between items-center cursor-pointer transition-colors ${isDark ? 'hover:bg-slate-800/50' : 'hover:bg-gray-50'}`}>
                                     <span className="font-black text-sm">{stock.ticker}</span>
                                     <span className="font-black text-rose-500 text-sm">{stock.change}%</span>
                                 </li>
@@ -139,7 +130,6 @@ const ScreenerPage = ({ settings }) => {
                     </div>
                 </div>
 
-                {/* Strategy Selection */}
                 <div className="space-y-6">
                     <h2 className="text-xl font-black flex items-center gap-3">
                         <Filter className="w-5 h-5 text-blue-500" />
@@ -150,14 +140,7 @@ const ScreenerPage = ({ settings }) => {
                             const Icon = s.icon;
                             const isSelected = style === s.id;
                             return (
-                                <button
-                                    key={s.id}
-                                    onClick={() => setStyle(s.id)}
-                                    className={`flex items-center gap-5 p-6 rounded-3xl border-2 transition-all transform hover:translate-y-[-4px] active:scale-[0.98] ${isSelected
-                                        ? (isDark ? 'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-900/40' : 'border-blue-600 bg-blue-50 shadow-xl shadow-blue-500/10 scale-[1.02]')
-                                        : (isDark ? 'border-slate-800 bg-slate-900/50 hover:border-slate-700' : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-lg')
-                                        }`}
-                                >
+                                <button key={s.id} onClick={() => setStyle(s.id)} className={`flex items-center gap-5 p-6 rounded-3xl border-2 transition-all transform hover:translate-y-[-4px] active:scale-[0.98] ${isSelected ? (isDark ? 'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-900/40' : 'border-blue-600 bg-blue-50 shadow-xl shadow-blue-500/10 scale-[1.02]') : (isDark ? 'border-slate-800 bg-slate-900/50 hover:border-slate-700' : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-lg')}`}>
                                     <div className={`p-4 rounded-xl shadow-inner ${s.bg} ${s.color}`}>
                                         <Icon className="w-7 h-7" />
                                     </div>
@@ -171,8 +154,7 @@ const ScreenerPage = ({ settings }) => {
                     </div>
                 </div>
 
-                {/* Recommendations Table */}
-                <div className={`shadow-2xl rounded-[2.5rem] border overflow-hidden transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+                <div className={`shadow-2xl rounded-[2.5rem] border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
                     <div className={`px-10 py-6 border-b flex items-center justify-between ${isDark ? 'border-slate-800' : 'border-gray-50'}`}>
                         <h3 className="text-lg font-black italic">Neural Pick Stream ({market})</h3>
                         <div className={`h-2 w-2 rounded-full bg-blue-500 animate-ping`}></div>
@@ -215,10 +197,7 @@ const ScreenerPage = ({ settings }) => {
                                                 </div>
                                             </td>
                                             <td className="px-10 py-6 whitespace-nowrap text-center">
-                                                <button
-                                                    onClick={() => handleAnalyze(rec.ticker)}
-                                                    className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isDark ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-500/20' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200'}`}
-                                                >
+                                                <button onClick={() => handleAnalyze(rec.ticker)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isDark ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-500/20' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200'}`}>
                                                     {t.scr_analyze}
                                                 </button>
                                             </td>
