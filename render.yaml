@@ -10,6 +10,8 @@ services:
         value: 3.11.7
       - key: IS_VIRTUAL
         value: "True"
+      - key: PYTHONPATH
+        value: "."
       - key: GEMINI_API_KEY
         sync: false
       - key: FRED_API_KEY
