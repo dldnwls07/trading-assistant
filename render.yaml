@@ -10,3 +10,15 @@ services:
         value: 3.11.7
       - key: IS_VIRTUAL
         value: "True"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FRED_API_KEY
+        sync: false
+      - key: HF_TOKEN
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      - key: TARGET_MARKET
+        value: "US"
+      - key: TRADE_INTERVAL
+        value: "3600"
