@@ -22,6 +22,7 @@ from src.agents.chat_assistant import ChatAssistant
 from src.agents.event_calendar import EventCalendar
 from src.agents.portfolio_analyzer import PortfolioAnalyzer
 from src.agents.screener import StockScreener
+from src.agents.chartist import ChartMaster
 from src.utils.serializer import safe_serialize
 
 # 로깅
@@ -96,6 +97,7 @@ chat_assistant = ChatAssistant(gemini_api_key=os.getenv("GEMINI_API_KEY"))
 event_calendar = EventCalendar()
 portfolio_analyzer = PortfolioAnalyzer()
 screener = StockScreener()
+chart_master = ChartMaster()
 
 # 전역 데이터
 class KRXLoader:
@@ -348,8 +350,27 @@ async def analyze_get(ticker: str):
     except HTTPException as he:
         raise he
     except Exception as e:
-        logger.error(f"Analysis GET error: {e}")
         raise e
+
+@app.get("/api/analyze/technical/{ticker}")
+async def get_technical_analysis(ticker: str):
+    """
+    차티스트 에이전트의 정밀 기술적 분석 조회
+    """
+    try:
+        from src.api.server import get_final_ticker
+        validate_ticker(ticker)
+        final_ticker = get_final_ticker(ticker)
+        
+        df = await collector.get_ohlcv(final_ticker, period="1y", interval="1d")
+        if df is None or df.empty:
+            raise HTTPException(status_code=404, detail="Data not found")
+            
+        analysis = chart_master.analyze_chart(final_ticker, df)
+        return JSONResponse(content=safe_serialize(analysis))
+    except Exception as e:
+        logger.error(f"Technical analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/history/{ticker}")
 async def get_history(ticker: str, interval: str = "1d"):
