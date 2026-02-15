@@ -7,9 +7,8 @@ import numpy as np
 import logging
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import yfinance as yf
-
 from src.agents.analyst import StockAnalyst
+from src.data.collector import MarketDataCollector
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +19,11 @@ class StockScreener:
     
     def __init__(self, analyst: StockAnalyst = None):
         self.analyst = analyst or StockAnalyst()
+        self.collector = MarketDataCollector(use_db=False)
     
     def _fetch_data(self, ticker: str, period: str = "1y", interval: str = "1d") -> Optional[pd.DataFrame]:
-        """yfinance를 통한 주가 데이터 수집"""
-        try:
-            stock = yf.Ticker(ticker)
-            df = stock.history(period=period, interval=interval)
-            return df if not df.empty else None
-        except Exception as e:
-            logger.warning(f"{ticker} 데이터 수집 실패: {e}")
-            return None
+        """MarketDataCollector를 통한 통합 데이터 수집 (차단 우회 포함)"""
+        return self.collector.get_ohlcv(ticker, period=period, interval=interval)
         
     def screen_stocks(self, 
                      tickers: List[str], 
@@ -232,20 +226,22 @@ class StockScreener:
     def _get_stock_change(self, ticker: str) -> Optional[Dict[str, Any]]:
         """단일 종목의 당일 변동률 조회"""
         try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="5d")
-            if len(hist) < 2: return None
+            # collector를 통해 5일치 데이터 수집 (세션/FDR 우회 적용)
+            hist = self.collector.get_ohlcv(ticker, period="5d", interval="1d")
+            if hist is None or len(hist) < 2: return None
             
+            # 컬럼 표준화 (collector에서 Date 리셋되어 있음)
             prev_close = hist['Close'].iloc[-2]
             current_close = hist['Close'].iloc[-1]
             change_pct = ((current_close - prev_close) / prev_close) * 100
             
             return {
                 "ticker": ticker,
-                "price": round(current_close, 2),
-                "change": round(change_pct, 2)
+                "price": round(float(current_close), 2),
+                "change": round(float(change_pct), 2)
             }
-        except:
+        except Exception as e:
+            logger.debug(f"Change fetch error for {ticker}: {e}")
             return None
 
 # 사용 예시

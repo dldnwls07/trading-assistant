@@ -119,20 +119,37 @@ class MarketDataCollector:
             try:
                 logger.info(f"Fetching {interval} data for {ticker} (Attempt {attempt+1}/{retries})...")
                 
+                # [차단 해결] 브라우저 헤더를 포함한 세션 생성
+                session = requests.Session()
+                session.headers.update({
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                })
+                
                 if is_korean and interval in ['1d', '1wk', '1mo']:
                     # [한국 주식] FinanceDataReader 사용 (일봉 이상만 지원)
-                    # 기간 설정 (period -> start date 변환)
                     end_date = datetime.now()
                     if period == '1y': start_date = end_date - timedelta(days=365)
                     elif period == '60d': start_date = end_date - timedelta(days=60)
-                    else: start_date = end_date - timedelta(days=365) # 기본 1년
+                    else: start_date = end_date - timedelta(days=365)
                     
                     df = fdr.DataReader(clean_ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
                     
                 else:
-                    # [미국 주식] 또는 [분봉 데이터]는 yfinance 사용
-                    stock = yf.Ticker(ticker)
-                    df = stock.history(period=period, interval=interval)
+                    # [미국 주식] yfinance 시도 (세션 적용)
+                    try:
+                        stock = yf.Ticker(ticker, session=session)
+                        df = stock.history(period=period, interval=interval)
+                        
+                        # [긴급 백업] yfinance가 비어있다면 FinanceDataReader(인베스팅) 시도
+                        if (df is None or df.empty) and not is_korean and interval in ['1d', '1wk', '1mo']:
+                            logger.warning(f"yfinance blocked for {ticker}, falling back to FinanceDataReader...")
+                            df = fdr.DataReader(ticker, period=period) # FDR은 미국 종목도 인베스팅닷컴 등으로 가져옴
+                    except Exception as e:
+                        logger.warning(f"Primary fetch failed: {e}, attempting fallback...")
+                        if not is_korean:
+                            df = fdr.DataReader(ticker, period=period)
+                        else:
+                            raise e
                 
                 # [방어코드] 반환값 검증 (빈 데이터 시 재시도)
                 if df is None or df.empty:
