@@ -5,6 +5,7 @@ AI 추천 종목 스크리너 - 인베스팅닷컴 스타일
 import pandas as pd
 import numpy as np
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.agents.analyst import StockAnalyst
@@ -92,7 +93,45 @@ class StockScreener:
             logger.error(f"{ticker} 분석 중 오류: {e}")
             return None
 
-    # ... (생략된 중간 메서드들: _apply_style_filter, _generate_reason, get_market_tickers 동일) ...
+    def get_market_tickers(self, market: str = "US", limit: int = 20) -> List[str]:
+        """시장별 주요 감시 종목 리스트 반환"""
+        if market == "KR":
+            # 한국 시장 주요 종목 (삼성전자, SK하이닉스 등)
+            return ["005930.KS", "000660.KS", "035420.KS", "035720.KS", "005380.KS", 
+                    "000270.KS", "068270.KS", "005490.KS", "247540.KQ", "086520.KQ"][:limit]
+        else:
+            # 미국 시장 주요 종목 (Magnificent 7 + 주요 성장주)
+            return ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", 
+                    "AVGO", "NFLX", "COST", "PYPL", "INTC", "QCOM", "V", "MA"][:limit]
+
+    def _apply_style_filter(self, ticker: str, df: pd.DataFrame, analysis: Dict[str, Any], style: str) -> float:
+        """투자 스타일에 따른 적합도 점수 계산 (0~100)"""
+        score = 100
+        signal = analysis.get('signal', 'HOLD')
+        
+        if style == "momentum":
+            # 모멘텀: RSI 50 이상, 추세 강도 높음
+            rsi = analysis.get('daily_analysis', {}).get('rsi_value', 50)
+            if rsi < 50: score -= 30
+            if signal == 'STRONG_BUY': score += 20
+        elif style == "value":
+            # 가치: 과매도권 선호 (RSI 낮은 종목)
+            rsi = analysis.get('daily_analysis', {}).get('rsi_value', 50)
+            if rsi > 60: score -= 30
+            if rsi < 40: score += 20
+        elif style == "aggressive_growth":
+            # 공격적 성장: 변동성이 크더라도 상승세인 종목
+            if signal in ['BUY', 'STRONG_BUY']: score += 10
+            
+        return max(50, min(150, score)) # 50~150 사이 가중치 반환
+
+    def _generate_reason(self, analysis: Dict[str, Any], style: str) -> str:
+        """분석 결과를 바탕으로 사람 친화적인 추천 이유 생성"""
+        signal = analysis.get('signal', '중립')
+        score = analysis.get('final_score', 50)
+        regime = analysis.get('market_regime', '횡보')
+        
+        return f"{signal} 신호 포착(점수: {score}). 시장 {regime} 국면에서 {style} 스타일에 적합한 기술적 패턴이 확인됨."
     
     async def get_recommendations(self, style: str = "balanced", market: str = "US", limit: int = 10) -> Dict[str, Any]:
         """AI 추천 종목 조회 (비동기)"""

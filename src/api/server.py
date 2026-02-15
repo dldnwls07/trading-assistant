@@ -16,8 +16,8 @@ from starlette.status import HTTP_403_FORBIDDEN
 from src.data.collector import MarketDataCollector
 from src.data.storage import get_storage
 from src.data.parser import FinancialParser
-from src.agents.analyst import SmartAnalyst
-from src.agents.ai_analyzer import AIReportGenerator
+from src.agents.analyst import StockAnalyst
+from src.agents.ai_analyzer import AIAnalyzer
 from src.agents.chat_assistant import ChatAssistant
 from src.agents.event_calendar import EventCalendar
 from src.agents.portfolio_analyzer import PortfolioAnalyzer
@@ -40,14 +40,15 @@ origins = [
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "chrome-extension://*",   # Extension Support (Restrict ID in prod)
+    "https://trading-assistant-all-in-one.onrender.com", # Production URL
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins + ["https://trading-assistant-all-in-one.onrender.com"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"], # Limit Methods
-    allow_headers=["Content-Type", "Authorization"], # Limit Headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # === Rate Limiting (DoS Protection) ===
@@ -682,7 +683,7 @@ async def get_recommendations(
     AI 추천 종목 스크리닝
     """
     try:
-        recommendations = screener.get_recommendations(
+        recommendations = await screener.get_recommendations(
             style=style,
             market=market,
             limit=limit
@@ -698,7 +699,7 @@ async def get_top_movers(market: str = "US"):
     급등/급락 종목
     """
     try:
-        movers = screener.get_top_movers(market=market)
+        movers = await screener.get_top_movers(market=market)
         return safe_serialize(movers)
     except Exception as e:
         logger.error(f"Top movers error: {e}")

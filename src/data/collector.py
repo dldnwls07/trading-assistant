@@ -1,3 +1,4 @@
+import asyncio
 import yfinance as yf
 import pandas as pd
 import logging
@@ -132,7 +133,8 @@ class MarketDataCollector:
                         # [미국/해외 주식] yfinance -> FDR (Investing.com) 백업
                         try:
                             # 1. yfinance 시도
-                            stock = yf.Ticker(ticker, session=session)
+                            # [패치] Yahoo API 정책 변경: 명시적 requests Session 대신 기본 핸들러 사용 권장
+                            stock = yf.Ticker(ticker)
                             df = stock.history(period=period, interval=interval)
                             
                             # 데이터가 비어있으면 FDR 백업 시도

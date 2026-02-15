@@ -5,8 +5,9 @@ pydantic==2.6.1
 pydantic-settings==2.1.0
 slowapi==0.1.9
 requests==2.31.0
+curl_cffi>=0.6.0
 pandas==2.2.0
-yfinance==0.2.36
+yfinance>=0.2.40
 finance-datareader==0.9.66
 google-generativeai==0.3.2
 scikit-learn==1.4.0

@@ -193,4 +193,5 @@ async def start_auto_trading():
         await asyncio.sleep(trader.trade_interval)
 
 if __name__ == "__main__":
-    start_auto_trading()
+    import asyncio
+    asyncio.run(start_auto_trading())
