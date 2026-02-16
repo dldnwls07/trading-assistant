@@ -185,7 +185,8 @@ async def start_auto_trading():
     """무한 루프 실행 (비동기)"""
     import asyncio
     trader = AutoTrader()
-    await send_alert("🤖 AI 자율 트레이딩 워커(Async)가 시작되었습니다!", title="AutoTrader Start")
+    # await send_alert("🤖 AI 자율 트레이딩 워커(Async)가 시작되었습니다!", title="AutoTrader Start")
+    logger.info("🤖 AI 자율 트레이딩 워커(Async)가 시작되었습니다!")
     
     while True:
         await trader.run_once()

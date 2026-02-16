@@ -58,24 +58,53 @@ async def main_loop():
     
     # 마지막 지표 브리핑 날짜
     last_briefing_date = None
+    last_weekly_date = None
     
     while True:
         await check_alerts()
         
-        # 매일 오전 8시 30분 경제 일정 브리핑 (간이 구현)
         now = datetime.now()
         today = now.strftime("%Y-%m-%d")
+        
+        # [1] 매일 오전 8시 30분 데일리 브리핑 및 생존 신고
         if now.hour == 8 and now.minute >= 30 and last_briefing_date != today:
             cal_data = calendar.get_calendar(start_date=today, end_date=today)
             high_impact = [e for e in cal_data['events'] if e['importance'] in ['critical', 'high']]
             
+            msg = "🌞 **좋은 아침입니다! Trading Assistant 서버가 정상 작동 중입니다.**\n\n"
             if high_impact:
-                msg = "📅 **오늘의 주요 경제 일정**\n\n"
+                msg += "📅 **오늘의 주요 경제 일정:**\n"
                 for e in high_impact:
                     msg += f"• **{e['time']}** [{e['country']}] {e['title']} ({e['importance']})\n"
-                await send_alert(msg, title="📢 경제 캘린더 알림")
-            
+            else:
+                msg += "오늘 예정된 주요 고위험 경제 일정은 없습니다."
+                
+            await send_alert(msg, title="📢 데일리 시스템 리포트")
             last_briefing_date = today
+            
+        # [2] 매주 월요일 오전 9시 주간 경제 일정 브리핑
+        if now.weekday() == 0 and now.hour == 9 and now.minute >= 0 and last_weekly_date != today:
+            from datetime import timedelta
+            next_week = (now + timedelta(days=7)).strftime("%Y-%m-%d")
+            cal_data = calendar.get_calendar(start_date=today, end_date=next_week)
+            
+            # 중요도 높은 순으로 정리
+            events = cal_data.get('events', [])
+            high_impact = [e for e in events if e['importance'] in ['critical', 'high']]
+            
+            if high_impact:
+                msg = "🗓️ **이번 주 주요 경제 일정 브리핑**\n\n"
+                # 날짜별로 그룹화해서 보여주기
+                current_date = ""
+                for e in high_impact[:12]: # 너무 길지 않게 최대 12개
+                    if current_date != e['date']:
+                        current_date = e['date']
+                        msg += f"\n📅 **{current_date}**\n"
+                    msg += f"• `{e['time']}` [{e['country']}] {e['title']}\n"
+                
+                await send_alert(msg, title="📊 위클리 마켓 캘린더")
+            
+            last_weekly_date = today
             
         await asyncio.sleep(60) # 1분 대기
 

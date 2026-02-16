@@ -7,8 +7,10 @@ echo  AI 트레이딩 어시스턴트 v2.0 통합 시작
 echo  (Paper Trading & Auto-Pilot Mode)
 echo ========================================
 
-:: 경로 설정 및 이동
+:: 경로 설정 및 이동 (scripts 폴더에 위치한다고 가정)
 cd /d "%~dp0"
+:: 상위 폴더(프로젝트 루트)로 이동
+cd ..
 set PYTHONPATH=%cd%
 
 :: [준비] 필요한 라이브러리 설치 확인

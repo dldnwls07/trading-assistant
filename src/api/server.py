@@ -45,9 +45,8 @@ async def lifespan(app: FastAPI):
     # 2. Background Data Loading
     asyncio.create_task(load_krx_bg())
     
-    # 3. System Alert
-    from src.utils.notifications import send_alert
-    await send_alert("🚀 Trading Assistant v2.0 서버가 시작되었습니다.", title="System Startup")
+    # 3. System Alert (로그로 대체하여 알람 도배 방지)
+    logger.info("🚀 Trading Assistant v2.0 서버가 시작되었습니다.")
     
     # 4. Background Workers
     from src.api.alert_worker import check_alerts
@@ -79,8 +78,7 @@ async def lifespan(app: FastAPI):
     
     # --- Shutdown ---
     logger.info("🛑 Server is shutting down...")
-    from src.utils.notifications import send_alert
-    await send_alert("🛑 Trading Assistant v2.0 서버가 정상적으로 종료되었습니다.", title="System Shutdown")
+    # await send_alert("🛑 Trading Assistant v2.0 서버가 정상적으로 종료되었습니다.", title="System Shutdown")
 
 app = FastAPI(
     title="Trading Assistant API v2.0",
@@ -178,10 +176,14 @@ class AnalysisResponse(BaseModel):
 
 # === API 엔드포인트 ===
 
-# 루트 도메인 접속 시 프론트엔드 서빙 (정적 파일 설정 이후 하단에서 정의)
-# @app.get("/")
-# async def root():
-#     return {"status": "ok", "message": "Trading Assistant Server is running"}
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "Trading Assistant Server is running"}
+
+@app.get("/api/health")
+async def health_check():
+    """GitHub Actions 및 Render 헬스체크용 엔드포인트"""
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 
 def get_final_ticker(ticker: str) -> str:
@@ -916,7 +918,9 @@ async def health_check():
     }
 
 # === 정적 파일 서빙 및 SPA 라우팅 (최하단 배치) ===
-dist_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "dist")
+# 프로젝트 루트 -> frontend -> dist 경로 탐색
+root_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+dist_path = os.path.join(root_path, "frontend", "dist")
 
 if os.path.exists(dist_path):
     # assets 폴더 마운트 (우선순위 높음)
