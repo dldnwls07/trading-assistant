@@ -9,6 +9,7 @@ import pandas as pd
 import json
 import os
 import asyncio
+import traceback
 from datetime import datetime
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
@@ -91,6 +92,8 @@ app = FastAPI(
 origins = [
     "http://localhost:5173",  # Vite Dev Server
     "http://127.0.0.1:5173",
+    "http://localhost:5174",  # Fallback Port
+    "http://127.0.0.1:5174",
     "http://localhost:3000",
     "chrome-extension://*",   # Extension Support
     "https://trading-assistant-all-in-one.onrender.com", # Production URL
@@ -577,25 +580,22 @@ async def get_calendar(
     lang: str = "ko"
 ):
     """
-    경제 이벤트 캘린더
+    경제 이벤트 캘린더 (v2: DB 연동 및 리스크 분석 포함)
     """
     try:
         from datetime import datetime, timedelta
         
-        if not start_date:
-            start_date = datetime.now().strftime("%Y-%m-%d")
-        if not end_date:
-            end_date = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
-        
+        # storage 인스턴스 전달
         ticker_list = None
         if tickers:
             ticker_list = [validate_ticker(t.strip()) for t in tickers.split(",")]
         
-        calendar_data = event_calendar.get_calendar(
+        calendar_data = await event_calendar.get_calendar_v2(
             start_date=start_date,
             end_date=end_date,
             tickers=ticker_list,
-            lang=lang
+            lang=lang,
+            storage=storage
         )
         
         return safe_serialize(calendar_data)
@@ -603,7 +603,22 @@ async def get_calendar(
         raise he
     except Exception as e:
         logger.error(f"Calendar error: {e}")
-        raise e
+        logger.error(traceback.format_exc()) # 상세 에러 로그 출력
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@app.get("/api/calendar/analyze")
+async def get_event_impact(
+    ticker: str,
+    event_title: str
+):
+    """특정 이벤트가 특정 종목에 미치는 역사적 영향 분석"""
+    try:
+        validate_ticker(ticker)
+        impact = await event_calendar.analyze_event_impact(ticker, event_title, storage)
+        return safe_serialize(impact)
+    except Exception as e:
+        logger.error(f"Event impact analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # === 포트폴리오 분석 ===
 class PortfolioRequest(BaseModel):

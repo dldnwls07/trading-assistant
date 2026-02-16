@@ -166,7 +166,7 @@ class StockScreener:
         # 3. 종합 추천 문구 생성
         total_score = consensus.get('avg_score', 0)
         
-        reason = f"🔍 [AI 종합] {consensus.get('consensus', '분석 중')} ({total_score}점)\n"
+        reason = f"🔍 [AI 종합(v2.1)] {consensus.get('consensus', '분석 중')} ({total_score}점)\n"
         reason += f"   • 시장 국면: {regime_label}\n"
         reason += f"   • 시계열 분석: 단기({s_sig}) → 중기({m_sig}) → 장기({l_sig})\n"
         reason += f"   • {style} 전략 적합도 반영됨"

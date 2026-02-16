@@ -86,6 +86,23 @@ class VirtualTrade(Base):
     price = Column(Float)
     timestamp = Column(Date, default=datetime.now().date())
 
+class EconomicEvent(Base):
+    __tablename__ = 'economic_events'
+    id = Column(Integer, primary_key=True)
+    event_key = Column(String, unique=True) # 중복 저장을 방지하기 위한 키 (date_title)
+    date = Column(Date)
+    time = Column(String)
+    country = Column(String)
+    title = Column(String)
+    description = Column(String)
+    importance = Column(String)
+    previous = Column(String)
+    forecast = Column(String)
+    actual = Column(String)
+    category = Column(String)
+    impact_score = Column(Float) # Surprise Score 등 계산된 영향력
+    updated_at = Column(Date, default=datetime.now().date())
+
 # ===========================================
 # 싱글톤 DataStorage 고도화
 # ===========================================
@@ -216,6 +233,55 @@ class DataStorage:
                 .filter_by(ticker=ticker)
                 .order_by(PriceHistory.date.desc())
                 .limit(limit)
+            )
+            return list(result.scalars().all())
+
+    # --- 경제 이벤트 관련 ---
+    async def save_economic_events(self, events: List[Dict[str, Any]]):
+        """경제 이벤트 대량 저장"""
+        async with self.get_session() as session:
+            for e_data in events:
+                # event_key 생성 (date_title)
+                event_key = f"{e_data['date']}_{e_data['title']}"
+                
+                # 중복 체크
+                result = await session.execute(select(EconomicEvent).filter_by(event_key=event_key))
+                existing = result.scalar_one_or_none()
+                
+                if not existing:
+                    event = EconomicEvent(
+                        event_key=event_key,
+                        date=datetime.strptime(e_data['date'], "%Y-%m-%d").date() if isinstance(e_data['date'], str) else e_data['date'],
+                        time=e_data.get('time', ''),
+                        country=e_data.get('country', ''),
+                        title=e_data.get('title', ''),
+                        description=e_data.get('description', ''),
+                        importance=e_data.get('importance', 'low'),
+                        previous=e_data.get('previous', '-'),
+                        forecast=e_data.get('forecast', '-'),
+                        actual=e_data.get('actual', '-'),
+                        category=e_data.get('category', 'other'),
+                        impact_score=e_data.get('impact_score', 0.0)
+                    )
+                    session.add(event)
+                else:
+                    # 기존 데이터 업데이트
+                    existing.actual = e_data.get('actual', existing.actual)
+                    existing.impact_score = e_data.get('impact_score', existing.impact_score)
+                    existing.updated_at = datetime.now().date()
+            
+            await session.commit()
+
+    async def get_economic_events(self, start_date: str, end_date: str) -> List[EconomicEvent]:
+        """지정 기간 경제 이벤트 조회"""
+        async with self.get_session() as session:
+            s_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+            e_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+            
+            result = await session.execute(
+                select(EconomicEvent)
+                .filter(EconomicEvent.date >= s_dt, EconomicEvent.date <= e_dt)
+                .order_by(EconomicEvent.date.asc(), EconomicEvent.time.asc())
             )
             return list(result.scalars().all())
 
