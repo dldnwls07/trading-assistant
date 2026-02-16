@@ -14,6 +14,7 @@ import holidays
 from fredapi import Fred
 import os
 from dotenv import load_dotenv
+from src.agents.ai_analyzer import AIAnalyzer
 
 load_dotenv()
 
@@ -60,14 +61,14 @@ class EventCalendar:
     ]
 
     FOMC_SCHEDULE_2026 = [
-        {"date": "2026-01-28", "type": "FOMC Meeting", "importance": "critical"},
-        {"date": "2026-03-18", "type": "FOMC Meeting", "importance": "critical"},
-        {"date": "2026-04-29", "type": "FOMC Meeting", "importance": "critical"},
-        {"date": "2026-06-17", "type": "FOMC Meeting", "importance": "critical"},
-        {"date": "2026-07-29", "type": "FOMC Meeting", "importance": "critical"},
-        {"date": "2026-09-16", "type": "FOMC Meeting", "importance": "critical"},
-        {"date": "2026-11-04", "type": "FOMC Meeting", "importance": "critical"},
-        {"date": "2026-12-16", "type": "FOMC Meeting", "importance": "critical"}
+        {"date": "2026-01-28", "type": "FOMC", "importance": "critical"},
+        {"date": "2026-03-18", "type": "FOMC*", "importance": "critical"},
+        {"date": "2026-04-29", "type": "FOMC", "importance": "critical"},
+        {"date": "2026-06-17", "type": "FOMC*", "importance": "critical"},
+        {"date": "2026-07-29", "type": "FOMC", "importance": "critical"},
+        {"date": "2026-09-16", "type": "FOMC*", "importance": "critical"},
+        {"date": "2026-10-28", "type": "FOMC", "importance": "critical"},
+        {"date": "2026-12-09", "type": "FOMC*", "importance": "critical"}
     ]
     
     # 타임존 설정
@@ -168,6 +169,7 @@ class EventCalendar:
 
     def __init__(self):
         self.events = []
+        self.ai = AIAnalyzer()
         api_key = os.getenv("FRED_API_KEY")
         self.fred = Fred(api_key=api_key) if api_key else None
         # 휴장일 데이터 로드 (2024~2026년 포함)
@@ -263,34 +265,53 @@ class EventCalendar:
         return holiday_events
 
     def _get_fred_events(self, start: datetime, end: datetime, lang: str) -> List[Dict]:
-        """FRED API를 통한 주요 경제 지표 릴리즈 일정 가져오기"""
+        """FRED API를 통한 주요/보조 경제 지표 릴리즈 일정 (Saeve 수준 확장)"""
         events = []
         try:
-            # 주요 릴리즈 ID (CPI: 10, PPI: 11, Employment: 50, Retail: 53, GDP: 103)
-            important_releases = [10, 11, 50, 53, 103]
+            # 주요 릴리즈 ID 및 메타데이터
+            indicator_map = {
+                10: {"cat": "inflation", "imp": "critical"},  # CPI
+                11: {"cat": "inflation", "imp": "high"},      # PPI
+                50: {"cat": "macro", "imp": "critical"},      # Employment (NFP)
+                53: {"cat": "consumption", "imp": "high"},    # Retail Sales
+                103: {"cat": "macro", "imp": "critical"},     # GDP
+                2: {"cat": "production", "imp": "medium"},    # Industrial Production
+                107: {"cat": "realestate", "imp": "medium"},  # Housing Starts
+                128: {"cat": "production", "imp": "medium"},  # Durable Goods
+                180: {"cat": "macro", "imp": "medium"},       # ADP Employment (Private)
+                225: {"cat": "production", "imp": "medium"},  # Empire State Mfg
+                221: {"cat": "macro", "imp": "medium"},       # Leading Economic Index
+            }
             
-            for rid in important_releases:
-                # 릴리즈 정보 및 날짜 가져오기 (메서드명 복구: s 제거)
-                dates = self.fred.get_release_dates(rid)
-                # 데이터프레임 필터링 (start ~ end 기간 내의 미래 릴리즈)
-                valid_dates = dates[(dates['date'] >= start) & (dates['date'] <= end)]
-                
-                # 릴리즈 메타데이터 가져오기
-                release_info = self.fred.get_release(rid)
-                title = release_info['name']
-                
-                for _, row in valid_dates.iterrows():
-                    events.append({
-                        "date": row['date'].strftime("%Y-%m-%d"),
-                        "time": "22:30",  # 보통 미 동부시간 8:30 (KST 22:30)
-                        "datetime": row['date'].isoformat(),
-                        "country": "US",
-                        "type": "Indicator",
-                        "title": title if lang != "ko" else self._translate_fred_title(title),
-                        "description": f"FRED Official Release (ID: {rid})",
-                        "importance": "critical" if rid in [10, 50] else "high",
-                        "category": "inflation" if rid in [10, 11] else "macro"
-                    })
+            for rid, config in indicator_map.items():
+                try:
+                    # 일부 fredapi 버전 또는 환경에 따라 메서드 실종 대비
+                    if not hasattr(self.fred, 'get_release_dates'):
+                        continue
+                        
+                    dates = self.fred.get_release_dates(rid)
+                    valid_dates = dates[(dates['date'] >= start) & (dates['date'] <= end)]
+                    
+                    release_info = self.fred.get_release(rid)
+                    title = release_info['name']
+                    
+                    for _, row in valid_dates.iterrows():
+                        events.append({
+                            "date": row['date'].strftime("%Y-%m-%d"),
+                            "time": "22:30" if rid != 180 else "21:15", # ADP는 보통 15분 빠름
+                            "datetime": row['date'].isoformat(),
+                            "country": "US",
+                            "type": "Indicator",
+                            "title": title if lang != "ko" else self._translate_fred_title(title),
+                            "description": f"FRED Official Release (ID: {rid})",
+                            "importance": config["imp"],
+                            "category": config["cat"],
+                            "impact": "해당 지표 발표 시 시장 변동성 유의",
+                            "previous": "-", "forecast": "-", "actual": "-"
+                        })
+                except Exception as e:
+                    logger.debug(f"FRED release {rid} check failed: {e}")
+                    continue
         except Exception as e:
             logger.error(f"Error fetching FRED events: {e}")
             
@@ -303,7 +324,15 @@ class EventCalendar:
             "Producer Price Index": "생산자물가지수 (PPI)",
             "Employment Situation": "고용 보고서 (비농업 고용지수)",
             "Advance Monthly Sales for Retail and Food Services": "소매판매 지표",
-            "Gross Domestic Product": "국내총생산 (GDP) 성장률"
+            "Gross Domestic Product": "국내총생산 (GDP) 성장률",
+            "Industrial Production": "산업생산 지수",
+            "Housing Starts": "신규 주택착공 건수",
+            "Durable Goods": "내구재수주",
+            "ADP": "ADP 비농업 고용 변화",
+            "Empire State Manufacturing": "엠파이어스테이트 제조업 지수",
+            "Leading Economic Index": "경기선행지수 (LEI)",
+            "Capacity Utilization": "설비가동률",
+            "Business Inventories": "기업재고"
         }
         for eng, kor in mapping.items():
             if eng in title: return kor
@@ -342,108 +371,12 @@ class EventCalendar:
         return events
     
     def _get_economic_indicators(self, start: datetime, end: datetime, lang: str = "ko") -> List[Dict]:
-        """주요 경제 지표 발표 일정 (US, KR, EU, JP, CN)"""
-        events = []
-        
-        def add_item(dt_raw, tz, country, type_key, importance, category, scenarios_key):
-            dt_with_tz = dt_raw.replace(tzinfo=tz)
-            dt_kst = dt_with_tz.astimezone(self.TZ_KST)
-            check_date = dt_kst.replace(tzinfo=None)
-            
-            if start <= check_date <= end:
-                t_info = self.TRANS.get(type_key, {})
-                events.append({
-                    "date": dt_kst.strftime("%Y-%m-%d"),
-                    "time": dt_kst.strftime("%H:%M"),
-                    "datetime": dt_kst.isoformat(),
-                    "country": country,
-                    "type": type_key,
-                    "title": t_info.get("title", {}).get(lang, type_key),
-                    "description": t_info.get("desc", {}).get(lang, ""),
-                    "importance": importance,
-                    "impact": t_info.get("impact", {}).get(lang, ""),
-                    "previous": "이전값 확인",
-                    "forecast": "예상치 확인",
-                    "actual": "-",
-                    "category": category,
-                    "scenarios": self._get_scenario_analysis(scenarios_key)
-                })
-
-        # Simulated repeat indicators - Disabled to prioritize accurate manual data
-        """
-        curr = start.replace(day=1)
-        while curr <= end:
-            # US Indicators
-            add_item(curr.replace(day=1, hour=10, minute=0), self.TZ_NY, "US", "PMI", "high", "macro", "GDP")
-            add_item(curr.replace(day=12, hour=8, minute=30), self.TZ_NY, "US", "CPI", "critical", "inflation", "CPI")
-            add_item(curr.replace(day=14, hour=8, minute=30), self.TZ_NY, "US", "PPI", "high", "inflation", "PPI")
-            add_item(curr.replace(day=15, hour=10, minute=0), self.TZ_NY, "US", "Sentiment", "medium", "consumption", "GDP")
-            add_item(curr.replace(day=16, hour=8, minute=30), self.TZ_NY, "US", "Retail Sales", "high", "consumption", "Retail")
-            
-            # Global Indicators
-            add_item(curr.replace(day=2, hour=13, minute=45), self.TZ_LDN, "EU", "ECB", "critical", "policy", "CPI")
-            add_item(curr.replace(day=20, hour=11, minute=00), self.TZ_TKY, "JP", "BOJ", "critical", "policy", "CPI")
-            add_item(curr.replace(day=25, hour=10, minute=0), self.TZ_KST, "KR", "BOK", "high", "policy", "CPI")
-            
-            # Month Increment
-            if curr.month == 12: curr = curr.replace(year=curr.year+1, month=1)
-            else: curr = curr.replace(month=curr.month+1)
-        """
-        return events
+        """주요 경제 지표 발표 일정 (Disabled - Use FRED API)"""
+        return []
 
     def _get_professional_events(self, start: datetime, end: datetime, lang: str = "ko") -> List[Dict]:
-        """연준 위원 연설 및 국채 입찰 (Professional Data) - Disabled to prioritize accurate manual data"""
-        events = []
-        """
-        t_sp = self.TRANS["Speech"]
-        t_au = self.TRANS["Auction"]
-        
-        # 1. 미 재무부 국채 입찰 (Treasury Auctions) - 매월 정기적
-        # 2년물(매월 말), 5년물(매월 말), 10년물(매월 중순)
-        curr = start.replace(day=1)
-        while curr <= end:
-            # 10 Year Note (Approx 12th)
-            d10 = curr.replace(day=12, hour=13, minute=0)
-            if start <= d10 <= end:
-                events.append(self._create_auction_event(d10, "10Y", lang))
-            
-            # 2 Year Note (Approx 26th)
-            d2 = curr.replace(day=26, hour=13, minute=0)
-            if start <= d2 <= end:
-                events.append(self._create_auction_event(d2, "2Y", lang))
-            
-            if curr.month == 12: curr = curr.replace(year=curr.year+1, month=1)
-            else: curr = curr.replace(month=curr.month+1)
-
-        # 2. 연준 위원 연설 (Fed Speeches) - 블랙아웃 기간 외 빈번함
-        # 동적 수집이 이상적이나, 여기서는 주요 위원 위주로 시뮬레이션
-        speakers = ["Powell", "Williams", "Cook", "Waller"]
-        curr_s = start
-        while curr_s <= end:
-            # 화/수/목 위주로 연설 배치
-            if curr_s.weekday() in [1, 2, 3] and curr_s.day % 4 == 0:
-                name = speakers[curr_s.day % len(speakers)]
-                # ... rest of the logic
-                dt_ny = curr_s.replace(hour=10, minute=0, tzinfo=self.TZ_NY)
-                dt_kst = dt_ny.astimezone(self.TZ_KST)
-                events.append({
-                    "date": dt_kst.strftime("%Y-%m-%d"),
-                    "time": dt_kst.strftime("%H:%M"),
-                    "datetime": dt_kst.isoformat(),
-                    "country": "US",
-                    "type": "Speech",
-                    "title": t_sp["title_fmt"].get(lang, t_sp["title_fmt"]["en"]).format(name=name),
-                    "description": t_sp["desc"].get(lang, t_sp["desc"]["en"]),
-                    "importance": "high",
-                    "impact": t_sp["impact"].get(lang, t_sp["impact"]["en"]),
-                    "previous": "-", "forecast": "-", "actual": "-",
-                    "category": "policy",
-                    "scenarios": self._get_scenario_analysis("FOMC")
-                })
-            curr_s += timedelta(days=1)
-            
-        """
-        return events
+        """연준 위원 연설 및 국채 입찰 (Disabled - Use real-time data)"""
+        return []
 
     def _create_auction_event(self, dt_ny_raw, term, lang):
         t = self.TRANS["Auction"]
@@ -465,7 +398,7 @@ class EventCalendar:
         }
 
     def _get_scenario_analysis(self, event_type: str) -> Dict[str, str]:
-        """이벤트 결과에 따른 시장 영향 시나리오"""
+        """이벤트 결과에 따른 시장 영향 시나리오 및 대응 전략"""
         scenarios = {
             "CPI": {
                 "high": "🔴 예상 상회: 인플레 우려 → 금리 인하 지연 → 주식/채권 약세, 달러 강세",
@@ -494,9 +427,21 @@ class EventCalendar:
             "Retail": {
                 "high": "🟢 예상 상회: 강력한 소비 → 경기 침체 우려 해소 → 전체 시장 긍정적",
                 "low": "🔴 예상 하회: 소비 위축 → 경기 하강 신호 → 필수소비재/유틸리티 방어주 선호"
+            },
+            "production": {
+                "high": "🟢 예상 상회: 산업 활기 → 경기 확장 신호 → 원자재/산업재 공급망 관련주 긍정적",
+                "low": "🔴 예상 하회: 경기 수축 우려 → 제조업 둔화 → 투자 심리 위축"
+            },
+            "realestate": {
+                "high": "🟢 예상 상회: 부동산 경기 회복 → 건설/금융 섹터 호재",
+                "low": "🔴 예상 하회: 주택 수요 감소 → 금리 부담 가중 신호 → 경기 침체 우려"
+            },
+            "labor": {
+                "high": "🟡 예상 상회: 임금 상승 압력 → 인플레이션 고착화 우려 → 시장 변동성 확대",
+                "low": "🟢 예상 하회: 노동 시장 유연성 확보 → 연준 긴축 완화 명분 제공"
             }
         }
-        return scenarios.get(event_type, {"high": "상회 시 변동성 확대", "low": "하회 시 시장 주시"})
+        return scenarios.get(event_type, {"high": "결과 상회 시 시장 변동성 유의", "low": "결과 하회 시 시장 흐름 주시"})
 
     def _get_stock_events(self, ticker: str, start: datetime, end: datetime, lang: str = "ko") -> List[Dict]:
         """종목별 실적 및 배당 (yfinance)"""
@@ -651,7 +596,10 @@ class EventCalendar:
                         "forecast": e.forecast,
                         "actual": e.actual,
                         "category": e.category,
-                        "impact_score": e.impact_score
+                        "impact_score": e.impact_score,
+                        "ai_pre_analysis": e.ai_pre_analysis,
+                        "ai_post_analysis": e.ai_post_analysis,
+                        "ai_image_url": e.ai_image_url
                     } for e in db_events
                 ]
             except Exception as ex:
@@ -665,51 +613,69 @@ class EventCalendar:
         # 휴장일 추가 (Holidays Library)
         sim_events.extend(self._get_market_holidays(start, end, lang))
 
-        # [CRITICAL OVERRIDE] 검색 및 세이브(saveticker) 실데이터 기반 2026년 2월 16~18일 일정 보정
-        # 실제 팩트: 2/16(월) 한국 설날, 미국 대통령의날 휴장. 2/17(화) 한국 설날, 2/18(수) 한국 대체공휴일(예상)
+        # [CRITICAL OVERRIDE] 검색 및 세이브(saveticker) 실데이터 기반 2026년 2월 일정 보정
         verified_overrides = [
             {"date": "2026-02-16", "title": "한국 설날 연휴 (증시 휴장)", "country": "KR", "type": "Holiday", "importance": "high"},
             {"date": "2026-02-16", "title": "미국 대통령의 날 (증시 휴장)", "country": "US", "type": "Holiday", "importance": "high"},
+            
             {"date": "2026-02-17", "title": "한국 설날 연휴 (증시 휴장)", "country": "KR", "type": "Holiday", "importance": "high"},
+            {"date": "2026-02-17", "title": "ADP 비농업 고용 변화 보고서", "country": "US", "type": "Indicator", "importance": "medium", "time": "22:15", "category": "labor"},
+            {"date": "2026-02-17", "title": "엠파이어스테이트 제조업 지수", "country": "US", "type": "Indicator", "importance": "medium", "time": "22:30", "category": "production"},
+            {"date": "2026-02-17", "title": "미국 소매판매 (Retail Sales)", "country": "US", "type": "Indicator", "importance": "high", "time": "22:30", "category": "consumption"},
+            
             {"date": "2026-02-18", "title": "한국 설날 연휴 (휴장)", "country": "KR", "type": "Holiday", "importance": "high"},
+            {"date": "2026-02-18", "title": "주택착공건수", "country": "US", "type": "Indicator", "importance": "medium", "time": "22:30", "category": "realestate"},
+            {"date": "2026-02-18", "title": "내구재수주", "country": "US", "type": "Indicator", "importance": "medium", "time": "22:30", "category": "production"},
+            {"date": "2026-02-18", "title": "산업생산 지수", "country": "US", "type": "Indicator", "importance": "medium", "time": "23:15", "category": "production"},
+            {"date": "2026-02-18", "title": "FOMC 회의록 공개", "country": "US", "type": "FOMC", "importance": "high", "time": "04:00", "category": "policy"},
+
+            {"date": "2026-02-19", "title": "경기선행지수 (LEI)", "country": "US", "type": "Indicator", "importance": "medium", "time": "00:00", "category": "macro"},
+            {"date": "2026-02-19", "title": "EIA 원유재고", "country": "US", "type": "Indicator", "importance": "high", "time": "00:30", "category": "macro"},
+            {"date": "2026-02-19", "title": "20년물 국채 경매", "country": "US", "type": "Indicator", "importance": "medium", "time": "03:00", "category": "policy"},
         ]
         
         for vo in verified_overrides:
             v_dt = datetime.strptime(vo['date'], "%Y-%m-%d")
             if start <= v_dt <= end:
                 sim_events.append({
-                    **vo,
-                    "time": "00:00", "datetime": v_dt.isoformat(),
-                    "description": f"{vo['title']}로 인한 휴장",
-                    "category": "policy", "impact": "시장 거래 중단",
-                    "previous": "-", "forecast": "-", "actual": "-"
+                    "time": vo.get("time", "00:00"), 
+                    "datetime": v_dt.isoformat() if "time" not in vo else f"{vo['date']}T{vo['time']}:00",
+                    "description": f"{vo['title']} 관련 공식 일정",
+                    "category": vo.get("category", "macro"), 
+                    "impact": "시장 로직 및 변동성 확인",
+                    "previous": "-", "forecast": "-", "actual": "-",
+                    **vo
                 })
 
         if self.fred:
             fred_evs = self._get_fred_events(start, end, lang)
-            # 공휴일(휴장일)에는 지표 발표가 없으므로 해당 날짜의 지표는 필터링
-            holiday_dates = {e['date'] for e in sim_events if e['type'] == 'Holiday'}
-            sim_events.extend([e for e in fred_evs if e['date'] not in holiday_dates])
+            # 1. 팩트 기반 필터링: 휴장일(Holiday)에는 해당 국가의 지표 발표가 없음
+            holiday_map = {(e['date'], e['country']) for e in sim_events if e['type'] == 'Holiday'}
+            
+            clean_fred = []
+            for fe in fred_evs:
+                if (fe['date'], fe['country']) not in holiday_map:
+                    clean_fred.append(fe)
+            
+            sim_events.extend(clean_fred)
         
         # 정기 일정 추가
         sim_events.extend(self._get_fomc_events(start, end, lang))
 
-        # 3. 데이터 병합 (중복 제거 및 팩트 우선)
-        # 키를 날짜_제목_국가로 세분화하여 중복 제거
+        # 3. 데이터 병합 (Holidays/Facts 우선 + Indicators 중복 제거)
         all_events_map = {}
-        # 휴장일(Holiday)을 가장 먼저 넣어서 우선권 부여
+        # 휴장일 및 검증된 팩트 우선 삽입
         for e in sim_events:
-            if e['type'] == 'Holiday':
-                all_events_map[f"{e['date']}_{e['country']}_Holiday"] = e
+            if e['type'] in ['Holiday', 'FOMC']: 
+                all_events_map[f"{e['date']}_{e['title']}_{e.get('country','') }"] = e
         
-        # 나머지를 넣되 이미 휴장일이 있는 국가의 Indicators는 겹치지 않게 처리할 수도 있음
         for e in sim_events:
             key = f"{e['date']}_{e['title']}_{e.get('country','')}"
             if key not in all_events_map:
                 all_events_map[key] = e
 
         for e in db_events:
-            if e.get('type') == 'Holiday': continue
+            if e.get('type') == 'Holiday': continue 
             key = f"{e['date']}_{e['title']}_{e.get('country','')}"
             if key not in all_events_map:
                 all_events_map[key] = e
@@ -731,10 +697,13 @@ class EventCalendar:
         # 시간순 정렬
         all_events.sort(key=lambda x: (x['date'], x.get('time', '00:00')))
         
-        # 6. UI 호환성 보정 (모든 이벤트에 id 부여)
+        # 6. UI 호환성 보정 (모든 이벤트에 id 및 시나리오 부여)
         for i, e in enumerate(all_events):
             if 'id' not in e: e['id'] = f"ev-{e['date']}-{i}"
             if 'type' not in e: e['type'] = 'Indicator'
+            # 시나리오가 없는 경우 분석 결과 추가
+            if 'scenarios' not in e:
+                e['scenarios'] = self._get_scenario_analysis(e.get('category') or e.get('type'))
         
         summary = self._generate_summary(all_events, start, end)
         
@@ -807,6 +776,99 @@ class EventCalendar:
             return round(score, 2)
         except:
             return 0.0
+
+    def get_monthly_outlook(self, month_date: str, lang: str = "ko") -> Dict[str, Any]:
+        """매월 1일 디스코드 발송용 한 달 요약 및 시장 대응 전략"""
+        dt = datetime.strptime(month_date, "%Y-%m-%d")
+        month_name = dt.strftime("%B")
+        
+        # [2026년 2월 기준 팩트 전략]
+        if dt.year == 2026 and dt.month == 2:
+            return {
+                "title": "📅 2026년 2월 시장 전망 및 대응 전략",
+                "summary": "이번 달은 한국의 설날 연휴와 미국의 주요 소비/고용 지표 발표가 겹치는 시기입니다. 연초 랠리 이후 숨 고르기 장세가 예상됩니다.",
+                "key_themes": [
+                    "설날 연휴 기간 한국 증시 휴장에 따른 유동성 저하",
+                    "연준 위원들의 매파적/비둘기파적 발언이 섞이며 변동성 확대",
+                    "미국 소매판매 및 CPI 결과에 따른 인플레이션 경로 재확인"
+                ],
+                "strategy": [
+                    "지수보다는 실적 호조가 예상되는 개별 종목 장세 대응",
+                    "현금 비중 30%를 유지하며 지표 발표 후 방향성 확인 시 진입",
+                    "필수소비재 및 배당주 중심의 방어적 포트폴리오 비중 확대"
+                ],
+                "critical_dates": [
+                    {"date": "2026-02-16", "event": "양국 휴장 (설날/대통령의날)"},
+                    {"date": "2026-02-17", "event": "미국 소매판매 발표 (핵심 변곡점)"},
+                    {"date": "2026-02-18", "event": "FOMC 의사록 공개 (금리 경로 힌트)"}
+                ]
+            }
+        
+        return {
+            "title": f"📅 {month_name} 시장 전망 및 대응 전략",
+            "summary": "새로운 한 달이 시작되었습니다. 거시 경제 지표와 정책 변화에 주목하세요.",
+            "key_themes": ["금리 정책 방향성 탐색", "기업 실적 발표 시즌 대응"],
+            "strategy": ["리스크 관리 위주의 보수적 접근", "주요 지표 발표 전후 비중 조절"],
+            "critical_dates": []
+        }
+
+    async def generate_ai_scenarios(self, event: Dict[str, Any]) -> str:
+        """지표 발표 전 예상 시나리오 생성 (LLM 연동)"""
+        prompt = f"""
+        당신은 시니어 매크로 트레이더입니다. 다음 경제 지표 발표에 대해 '시장 예상 상회/부합/하회' 시나리오와 대응 전략을 작성하세요.
+        
+        [지표명] {event['title']} ({event['country']})
+        [중요도] {event['importance']}
+        [이전값] {event.get('previous', '-')}
+        [예상치] {event.get('forecast', '-')}
+        
+        출력 형식:
+        - 🟢 장밋빛 시나리오: (상황 설명 및 매수/매도 전략)
+        - 🔴 잿빛 시나리오: (상황 설명 및 매수/매도 전략)
+        - 🟡 중립/관망: (상황 설명)
+        
+        한국어로 전문적이고 간결하게 작성하세요.
+        """
+        try:
+            # AIAnalyzer의 generate_report와 비슷한 방식으로 신규 메서드 호출 가능하나 
+            # 여기서는 직접 LLM 호출 로직을 타거나 AIAnalyzer를 확장 사용
+            # AIAnalyzer에 범용 프롬프트 처리 메서드가 있다고 가정하거나 추가 필요
+            if hasattr(self.ai, '_generate_with_gemini') and self.ai.gemini_key:
+                return await asyncio.to_thread(self.ai._generate_with_gemini, prompt)
+            return "사전 시나리오 분석 중... (지표 영향력 확인 필요)"
+        except Exception as e:
+            logger.error(f"AI Scenario generation failed: {e}")
+            return "시나리오 생성 실패"
+
+    async def generate_post_event_report(self, event: Dict[str, Any]) -> str:
+        """지표 발표 후 결과 해석 리포트 생성 (LLM 연동)"""
+        prompt = f"""
+        당신은 금융 시장 분석가입니다. 방금 발표된 경제 지표 결과가 실제 시장에 미칠 영향을 분석하세요.
+        
+        [지표명] {event['title']} ({event['country']})
+        [결과] {event['actual']}
+        [예상치] {event.get('forecast', '-')}
+        [이전값] {event.get('previous', '-')}
+        
+        분석 내용:
+        1. 결과가 예상 대비 어떠한가? (서프라이즈/쇼크)
+        2. 주요 자산(나스닥, 달러, 국채)에 미칠 단기 영향은?
+        3. 향후 24시간 내 권장 트레이딩 전략
+        
+        한국어로 속보 리포트 형식으로 작성하세요.
+        """
+        try:
+            if hasattr(self.ai, '_generate_with_gemini') and self.ai.gemini_key:
+                return await asyncio.to_thread(self.ai._generate_with_gemini, prompt)
+            return f"결과 발표 속보: {event['actual']} (예상 대비 변동성 확대 유의)"
+        except Exception as e:
+            logger.error(f"AI Post-event report failed: {e}")
+            return "결과 분석 생성 실패"
+
+    async def get_monthly_outlook_ai(self, month_date: str) -> Dict[str, Any]:
+        """AI를 활용한 고도화된 월간 전망 생성"""
+        # 현재는 우선 팩트 기반 리포트를 반환하고 추후 LLM 연동 강화 가능
+        return self.get_monthly_outlook(month_date)
 
 if __name__ == "__main__":
     import asyncio

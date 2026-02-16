@@ -101,6 +101,9 @@ class EconomicEvent(Base):
     actual = Column(String)
     category = Column(String)
     impact_score = Column(Float) # Surprise Score 등 계산된 영향력
+    ai_pre_analysis = Column(String, nullable=True) # 발표 전 AI 시나리오 분석
+    ai_post_analysis = Column(String, nullable=True) # 발표 후 AI 결과 해석
+    ai_image_url = Column(String, nullable=True) # 관련 분석 차트 이미지 경로
     updated_at = Column(Date, default=datetime.now().date())
 
 # ===========================================
@@ -261,13 +264,19 @@ class DataStorage:
                         forecast=e_data.get('forecast', '-'),
                         actual=e_data.get('actual', '-'),
                         category=e_data.get('category', 'other'),
-                        impact_score=e_data.get('impact_score', 0.0)
+                        impact_score=e_data.get('impact_score', 0.0),
+                        ai_pre_analysis=e_data.get('ai_pre_analysis'),
+                        ai_post_analysis=e_data.get('ai_post_analysis'),
+                        ai_image_url=e_data.get('ai_image_url')
                     )
                     session.add(event)
                 else:
                     # 기존 데이터 업데이트
                     existing.actual = e_data.get('actual', existing.actual)
                     existing.impact_score = e_data.get('impact_score', existing.impact_score)
+                    existing.ai_pre_analysis = e_data.get('ai_pre_analysis', existing.ai_pre_analysis)
+                    existing.ai_post_analysis = e_data.get('ai_post_analysis', existing.ai_post_analysis)
+                    existing.ai_image_url = e_data.get('ai_image_url', existing.ai_image_url)
                     existing.updated_at = datetime.now().date()
             
             await session.commit()

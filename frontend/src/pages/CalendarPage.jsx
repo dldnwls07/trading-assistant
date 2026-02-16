@@ -88,11 +88,13 @@ const CalendarPage = ({ settings }) => {
             case 'stock': return <TrendingUp className="w-4 h-4" />;
             case 'inflation': return <TrendingDown className="w-4 h-4" />;
             case 'policy': return <Info className="w-4 h-4" />;
+            case 'production': return <TrendingUp className="w-4 h-4 text-blue-400" />;
+            case 'realestate': return <Globe className="w-4 h-4 text-emerald-400" />;
             default: return <Minus className="w-4 h-4" />;
         }
     };
 
-    const categories = ['all', 'macro', 'stock', 'inflation', 'policy', 'consumption', 'labor'];
+    const categories = ['all', 'macro', 'stock', 'inflation', 'policy', 'consumption', 'labor', 'production', 'realestate'];
     const importances = ['all', 'critical', 'high', 'medium', 'low'];
 
     const handleEventClick = (event) => {

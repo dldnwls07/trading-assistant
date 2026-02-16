@@ -59,6 +59,25 @@ const CalendarDetailModal = ({ isOpen, onClose, event, isDark, t }) => {
                         </div>
                     </section>
 
+                    {/* AI Market Outlook & Strategy (New) */}
+                    {event.scenarios && (
+                        <section className="space-y-6">
+                            <h3 className="text-xs font-bold uppercase tracking-widest opacity-40 flex items-center gap-2">
+                                <Brain className="w-4 h-4 text-purple-400" /> AI 시장 전망 및 대응 전략
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className={`p-6 rounded-3xl border ${isDark ? 'bg-slate-950/50 border-slate-800' : 'bg-red-50/50 border-red-100'}`}>
+                                    <p className="text-sm font-black text-red-500 mb-3 border-b border-red-100 pb-2">기대치 상회 시 (Higher than Forecast)</p>
+                                    <p className="text-sm leading-relaxed opacity-80 font-bold">{event.scenarios.high}</p>
+                                </div>
+                                <div className={`p-6 rounded-3xl border ${isDark ? 'bg-slate-950/50 border-slate-800' : 'bg-green-50/50 border-green-100'}`}>
+                                    <p className="text-sm font-black text-green-600 mb-3 border-b border-green-100 pb-2">기대치 하회 시 (Lower than Forecast)</p>
+                                    <p className="text-sm leading-relaxed opacity-80 font-bold">{event.scenarios.low}</p>
+                                </div>
+                            </div>
+                        </section>
+                    )}
+
                     {/* AI Historical Impact */}
                     <section className="space-y-6">
                         <div className="flex items-center justify-between">

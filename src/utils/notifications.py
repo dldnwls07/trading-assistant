@@ -34,15 +34,17 @@ class DiscordNotifier:
         if self._session and not self._session.closed:
             await self._session.close()
 
-    async def send_message(self, content: str, title: str = "🚨 Trading Alert", color: int = 3447003, fields: list = None):
+    async def send_message(self, content: str, title: str = "🚨 Trading Alert", color: int = 3447003, fields: list = None, thumbnail_url: str = None, image_url: str = None):
         """
-        Sends a message to Discord asynchronously.
+        Sends a message to Discord asynchronously with rich embed support.
         
         Args:
-            content: Main body text
+            content: Main body text (Description)
             title: Embed title
-            color: Sidebar color (Decimal color code, e.g. 3447003=Blue, 15158332=Red, 3066993=Green)
-            fields: List of dicts for key-value pairs [{"name": "Price", "value": "100", "inline": True}]
+            color: Sidebar color (Decimal color code)
+            fields: List of dicts for key-value pairs
+            thumbnail_url: Small icon in the top right
+            image_url: Large image at the bottom
         """
         if not self.webhook_url:
             return False
@@ -52,11 +54,21 @@ class DiscordNotifier:
             "description": content,
             "color": color,
             "timestamp": datetime.now().isoformat(),
-            "footer": {"text": "🤖 AI Trading Assistant v2.1 (Async)"}
+            "footer": {"text": "🤖 AI Trading Intelligence System"},
+            "author": {
+                "name": "QuantCore Pro AI",
+                "icon_url": "https://cdn-icons-png.flaticon.com/512/2586/2586117.png"
+            }
         }
         
         if fields:
             embed["fields"] = fields
+        
+        if thumbnail_url:
+            embed["thumbnail"] = {"url": thumbnail_url}
+            
+        if image_url:
+            embed["image"] = {"url": image_url}
             
         payload = {"embeds": [embed]}
         
