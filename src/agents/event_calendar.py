@@ -554,6 +554,7 @@ class EventCalendar:
             "impact_score": round(impact_score, 2),
             "is_fomc_week": is_fomc_week,
             "critical_events": critical_events,
+            "upcoming_events": events, # 전체 이벤트 리스트 추가
             "event_count": len(events)
         }
 

@@ -355,6 +355,65 @@ async def get_history(ticker: str, interval: str = "1d"):
         if df is None or df.empty:
             return {"ticker": final_ticker, "data": []}
             
+        if interval == "1y":
+            logger.info(f"Applying 1Y resampling for {ticker}...")
+            try:
+                # 1. Date 컬럼/인덱스 확인 및 변환
+                if 'Date' in df.columns:
+                    # 문자열/객체를 datetime으로 변환 (오류 시 NaT)
+                    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+                    df = df.dropna(subset=['Date']) # NaT 제거
+                    df.set_index('Date', inplace=True)
+                
+                # 인덱스가 여전히 DatetimeIndex가 아니라면 변환 시도
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    try:
+                        df.index = pd.to_datetime(df.index, errors='coerce')
+                        df = df[df.index.notnull()] # NaT 제거
+                    except:
+                        pass
+                
+                # 인덱스 변환 실패 시 리샘플링 불가 -> 원본 반환
+                if not isinstance(df.index, pd.DatetimeIndex) or df.empty:
+                    logger.warning("Could not convert index to DatetimeIndex for resampling")
+                    # 여기서 pass 하면 아래 로직에서 df 그대로 사용됨
+                else:
+                    logger.info(f"Before resampling: {len(df)} rows")
+
+                    # Resample to Yearly (Annual)
+                    agg_dict = {
+                        'Open': 'first',
+                        'High': 'max',
+                        'Low': 'min',
+                        'Close': 'last',
+                        'Volume': 'sum'
+                    }
+                    # Filter valid columns
+                    agg_dict = {k: v for k, v in agg_dict.items() if k in df.columns}
+                    
+                    # Try 'YE' first, then 'Y', then 'A'
+                    resampled_df = None
+                    for rule in ['YE', 'Y', 'A']:
+                        try:
+                            # kind='timestamp' is default but ensures index type
+                            resampled_df = df.resample(rule, kind='timestamp').agg(agg_dict).dropna()
+                            if not resampled_df.empty:
+                                break
+                        except Exception as rule_err:
+                            continue
+                    
+                    if resampled_df is not None and not resampled_df.empty:
+                        df = resampled_df
+                        logger.info(f"After resampling: {len(df)} rows")
+                    else:
+                        logger.warning("Resampling resulted in empty DataFrame or failed.")
+                    
+            except Exception as e:
+                logger.error(f"Resampling error completely failed: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                pass 
+
         # === 전문가급 기술적 지표 계산 (30개 이상) ===
         from src.utils.advanced_indicators import AdvancedIndicators
         

@@ -1,13 +1,13 @@
 import React from 'react';
-import { BarChart3, MessageSquare, Zap, Star, Eye, ChevronRight } from 'lucide-react';
+import { BarChart3, MessageSquare, Zap, Star, Eye, ChevronRight, Activity } from 'lucide-react';
 import HelpTooltip from '../HelpTooltip';
 
 const AnalysisInsights = ({ analysis, selectedView, setSelectedView, setSelectedInterval, isDark, t, onOpenReport, onUpdateHistory }) => {
     return (
-        <div className={`rounded-3xl border shadow-2xl p-8 mb-12 transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
-            <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4 text-center md:text-left">
-                <h3 className="text-2xl font-black flex items-center gap-3">
-                    <BarChart3 className="w-7 h-7 text-blue-500" />
+        <div className={`rounded-2xl border glass p-6 mb-8 transition-all duration-300 ${isDark ? 'border-slate-800' : 'border-gray-100'}`}>
+            <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
+                <h3 className="text-xl font-black flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-blue-500" />
                     AI Insight Engine 4.0
                 </h3>
                 <div className={`flex p-1.5 rounded-2xl ${isDark ? 'bg-slate-800' : 'bg-gray-100'}`}>
@@ -33,15 +33,15 @@ const AnalysisInsights = ({ analysis, selectedView, setSelectedView, setSelected
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                 <div className="lg:col-span-2 space-y-6">
-                    <div className={`p-8 rounded-3xl border-l-[6px] border-blue-600 relative overflow-hidden ${isDark ? 'bg-slate-800/50' : 'bg-blue-50/30'}`}>
+                    <div className={`p-8 rounded-3xl glass-blue border-l-[6px] border-blue-600 relative overflow-hidden`}>
                         <div className="absolute top-4 right-6 opacity-5">
                             <Zap className="w-24 h-24 fill-current" />
                         </div>
-                        <p className="text-xl font-black mb-4 flex items-center gap-2">
+                        <p className="text-xl font-black mb-6 flex items-center gap-2">
                             <MessageSquare className="w-5 h-5 text-blue-500" />
-                            Quantitative Summary
+                            Quantitative Intelligence Report
                         </p>
-                        <div className="text-base leading-relaxed whitespace-pre-wrap opacity-90 font-medium tracking-tight mb-6">
+                        <div className="text-sm leading-relaxed whitespace-pre-wrap opacity-90 font-medium terminal-font mb-8 bg-black/30 p-6 rounded-2xl border border-white/5 shadow-inner">
                             {analysis?.full_report || "Analyzing real-time harmonics and structural shifts..."}
                         </div>
 
@@ -54,21 +54,21 @@ const AnalysisInsights = ({ analysis, selectedView, setSelectedView, setSelected
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 font-black">
-                        <div className={`p-5 rounded-2xl border border-dashed transition-all hover:border-blue-500/50 ${isDark ? 'border-slate-700 bg-slate-800/20' : 'border-gray-200 bg-gray-50/50'}`}>
-                            <p className="text-[10px] text-gray-400 mb-2 uppercase tracking-widest flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                        <div className={`p-6 rounded-2xl glass border border-blue-500/20 transition-all hover:bg-blue-500/5 group`}>
+                            <p className="text-[10px] text-blue-400 mb-2 uppercase tracking-[0.2em] flex items-center gap-2">
+                                <Zap className="w-3 h-3" />
                                 Technical Paradigm
                                 <HelpTooltip indicatorId="AI Score" title="기술적 분석 관점" isDark={isDark} />
                             </p>
-                            <p className="text-sm opacity-80">{analysis?.[`${selectedView}_term`]?.focus_areas || "Calculating structural bias..."}</p>
+                            <p className="text-sm opacity-90 terminal-font leading-relaxed">{analysis?.[`${selectedView}_term`]?.focus_areas || "Architecting structural bias data..."}</p>
                         </div>
-                        <div className={`p-5 rounded-2xl border border-dashed transition-all hover:border-emerald-500/50 ${isDark ? 'border-slate-700 bg-slate-800/20' : 'border-gray-200 bg-gray-50/50'}`}>
-                            <p className="text-[10px] text-gray-400 mb-2 uppercase tracking-widest flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                        <div className={`p-6 rounded-2xl glass border border-emerald-500/20 transition-all hover:bg-emerald-500/5 group`}>
+                            <p className="text-[10px] text-emerald-400 mb-2 uppercase tracking-[0.2em] flex items-center gap-2">
+                                <Activity className="w-3 h-3" />
                                 Optimized Horizon
                                 <HelpTooltip indicatorId="SMA" title="최적 보유 기간" isDark={isDark} />
                             </p>
-                            <p className="text-sm opacity-80">{analysis?.[`${selectedView}_term`]?.holding_period || "Estimating time decay..."}</p>
+                            <p className="text-sm opacity-90 terminal-font leading-relaxed">{analysis?.[`${selectedView}_term`]?.holding_period || "Calculating time-series decay..."}</p>
                         </div>
                     </div>
                 </div>
