@@ -1006,47 +1006,45 @@ async def health_check():
 
 # === 정적 파일 서빙 및 SPA 라우팅 (최하단 배치) ===
 # === 정적 파일 서빙 및 SPA 라우팅 (최하단 배치) ===
-# 1. 경로 탐색: 실행 위치 기준 또는 파일 위치 기준
-current_dir = os.getcwd()
-file_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(file_dir))) # src/api/server.py -> project_root
+# 1. 절대 경로 계산 (실행 위치 기준 우선)
+# 배치 파일에서 cd /d "%~dp0"를 하므로 getcwd()가 프로젝트 루트임
+project_root = os.getcwd() 
+dist_path = os.path.join(project_root, "frontend", "dist")
 
-# 후보 경로들
-possible_paths = [
-    os.path.join(current_dir, "frontend", "dist"),
-    os.path.join(project_root, "frontend", "dist"),
-    os.path.join(current_dir, "dist"), 
-]
+# Fallback: 만약 CWD가 엉뚱한 곳이면 상대 경로로 다시 시도 (3단계 상위)
+if not os.path.exists(dist_path):
+    server_file_path = os.path.abspath(__file__)
+    # src/api/server.py -> src/api -> src -> project_root (3 steps)
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(server_file_path)))
+    dist_path = os.path.join(base_dir, "frontend", "dist")
 
-dist_path = None
-for path in possible_paths:
-    if os.path.exists(path) and os.path.exists(os.path.join(path, "index.html")):
-        dist_path = path
-        logger.info(f"✅ Frontend dist found at: {dist_path}")
-        break
+logger.info(f"📂 Checking Frontend Dist Path: {dist_path}")
 
-if dist_path:
+if os.path.exists(dist_path) and os.path.exists(os.path.join(dist_path, "index.html")):
+    logger.info("✅ Frontend dist found! Serving UI...")
+    
+    # Assets
     app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
-    # 루트 레벨 정적 파일 (favicon 등)
+    
+    # Root Files (vite.svg, etc)
     app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
 
-    # SPA Fallback (사실 StaticFiles(html=True)가 대부분 처리하지만, 명시적 처리를 위해)
     @app.exception_handler(404)
     async def custom_404_handler(request, exc):
-        # API 요청은 404 그대로 반환
         if request.url.path.startswith("/api"):
             return JSONResponse({"detail": "Not Found"}, status_code=404)
-        # 그 외(페이지 새로고침 등)는 index.html 반환
         return FileResponse(os.path.join(dist_path, "index.html"))
 
 else:
-    logger.warning("⚠️ Frontend dist NOT found. API Only Mode.")
+    logger.error(f"❌ Frontend dist NOT found at {dist_path}")
+    logger.error(f"Current Working Dir: {os.getcwd()}")
     @app.get("/")
     async def root():
         return {
             "status": "ok", 
-            "message": "Trading Assistant API Server is running", 
-            "note": "Frontend build not found. Please run 'npm run build' in frontend directory."
+            "message": "API Server is running (Frontend UI Missing)", 
+            "debug_path": dist_path,
+            "cwd": os.getcwd()
         }
 
 # 실행용: uvicorn src.api.server:app --reload --host 0.0.0.0 --port 8000

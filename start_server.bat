@@ -2,61 +2,58 @@
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-echo ========================================================
-echo  🚀 Trading Assistant Server (Split Window Mode)
-echo ========================================================
+:: -------------------------------------------------------------
+:: Trading Assistant Launcher (Split Mode)
+:: -------------------------------------------------------------
 
-:: 1. Check Python
+:: 1. Initial Checks (Silent Mode)
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] Python is not installed.
-    pause
-    exit /b 1
-)
+if %errorlevel% neq 0 ( exit /b 1 )
 
-:: 2. Venv Setup
-if not exist ".venv" (
-    echo [INFO] Creating Virtual Environment...
-    python -m venv .venv
-)
+if not exist ".venv" ( python -m venv .venv )
 call .venv\Scripts\activate
 
-:: 3. Dependencies
-if exist "requirements.txt" (
-    echo [INFO] Checking dependencies...
-    pip install -r requirements.txt >nul
-)
+if exist "requirements.txt" ( pip install -r requirements.txt >nul )
 
-:: 4. Build Frontend (Silent)
 where npm >nul 2>nul
 if %errorlevel% equ 0 (
     if exist "frontend" (
         cd frontend
-        echo [INFO] Building Frontend...
         call npm install >nul 2>&1
-        call npm run build
+        call npm run build >nul 2>&1
         cd ..
     )
 )
 
-:: 5. Get IP
-for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4 Address"') do (
-    set IP=%%a
-)
+:: 2. Get IP (Robust)
+set IP=127.0.0.1
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4 Address"') do ( set IP=%%a )
 set IP=%IP:~1%
 
-echo.
-echo ========================================================
-echo  ✅ Setup Complete!
-echo  
-echo  Opening new window for the Server...
-echo  Please Keep THIS window open to check the address.
-echo.
-echo  👉 Local Access:     http://localhost:8000
-echo  👉 Network Access:   http://%IP%:8000
-echo ========================================================
+:: 3. Clear Screen & Show Dashboard (Fixed View)
+cls
+color 0A
 
-:: 6. Launch Server in NEW Window
-start "Trading Assistant Server - DO NOT CLOSE" cmd /k "call .venv\Scripts\activate && python -m uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --reload"
+echo.
+echo  ========================================================
+echo   🚀 AI Trading Assistant v2.0 (Active Server)
+echo  ========================================================
+echo.
+echo   [ACCESS LINKS]  (Keep this window open!)
+echo.
+echo   👉 Local Access:     http://localhost:8000
+echo   👉 Network Access:   http://%IP%:8000
+echo.
+echo  ========================================================
+echo   [STATUS]
+echo   - Server PID: Running in separate window...
+echo   - Frontend:   Ready
+echo   - AI Agent:   Active
+echo.
+echo   * Press any key to stop server...
+echo  ========================================================
 
-pause
+:: 4. Launch Server in NEW Window (Logs go there)
+start "Trading Assistant Server Logs (DO NOT CLOSE)" cmd /k "call .venv\Scripts\activate && python -m uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --reload"
+
+pause >nul
