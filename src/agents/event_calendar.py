@@ -816,55 +816,61 @@ class EventCalendar:
     async def generate_ai_scenarios(self, event: Dict[str, Any]) -> str:
         """지표 발표 전 예상 시나리오 생성 (LLM 연동)"""
         prompt = f"""
-        당신은 시니어 매크로 트레이더입니다. 다음 경제 지표 발표에 대해 '시장 예상 상회/부합/하회' 시나리오와 대응 전략을 작성하세요.
-        
-        [지표명] {event['title']} ({event['country']})
-        [중요도] {event['importance']}
-        [이전값] {event.get('previous', '-')}
-        [예상치] {event.get('forecast', '-')}
-        
-        출력 형식:
-        - 🟢 장밋빛 시나리오: (상황 설명 및 매수/매도 전략)
-        - 🔴 잿빛 시나리오: (상황 설명 및 매수/매도 전략)
-        - 🟡 중립/관망: (상황 설명)
-        
-        한국어로 전문적이고 간결하게 작성하세요.
+        당신은 월가에서 20년 경력의 시니어 매크로 전략가입니다.
+        곧 발표될 다음 경제 지표에 대해 '시장 예상 상회/부합/하회' 시나리오별 시장 영향과 대응 전략을 분석해 주세요.
+
+        [지표 정보]
+        - 지표명: {event['title']} ({event['country']})
+        - 중요도: {event['importance']} (Critical/High/Medium/Low)
+        - 이전값: {event.get('previous', '-')}
+        - 예상치: {event.get('forecast', '-')}
+
+        [분석 요구사항]
+        1. 이 지표가 현재 시장(금리, 인플레이션, 경기 침체 우려 등)에서 왜 중요한지 한 줄로 요약하세요.
+        2. 다음 세 가지 시나리오별로 주식(Nasdaq), 채권(10년물 금리), 달러 인덱스의 예상 반응을 구체적으로 서술하세요.
+           - 시나리오 A (예상 상회): 결과가 예상보다 높게 나올 경우
+           - 시나리오 B (예상 하회): 결과가 예상보다 낮게 나올 경우
+           - 시나리오 C (예상 부합): 결과가 예상과 비슷할 경우
+        3. 트레이더를 위한 구체적인 대응 가이드를 제시하세요.
+
+        출력 형식은 마크다운을 사용하고, 한국어로 명확하고 통찰력 있게 작성하세요.
         """
         try:
-            # AIAnalyzer의 generate_report와 비슷한 방식으로 신규 메서드 호출 가능하나 
-            # 여기서는 직접 LLM 호출 로직을 타거나 AIAnalyzer를 확장 사용
-            # AIAnalyzer에 범용 프롬프트 처리 메서드가 있다고 가정하거나 추가 필요
-            if hasattr(self.ai, '_generate_with_gemini') and self.ai.gemini_key:
+            # AIAnalyzer의 _generate_with_gemini 메서드 직접 활용
+            if self.ai.gemini_key:
                 return await asyncio.to_thread(self.ai._generate_with_gemini, prompt)
-            return "사전 시나리오 분석 중... (지표 영향력 확인 필요)"
+            return "AI 분석을 위한 API 키가 설정되지 않았습니다."
         except Exception as e:
             logger.error(f"AI Scenario generation failed: {e}")
-            return "시나리오 생성 실패"
+            return "시나리오 생성 중 오류가 발생했습니다."
 
     async def generate_post_event_report(self, event: Dict[str, Any]) -> str:
         """지표 발표 후 결과 해석 리포트 생성 (LLM 연동)"""
         prompt = f"""
-        당신은 금융 시장 분석가입니다. 방금 발표된 경제 지표 결과가 실제 시장에 미칠 영향을 분석하세요.
-        
-        [지표명] {event['title']} ({event['country']})
-        [결과] {event['actual']}
-        [예상치] {event.get('forecast', '-')}
-        [이전값] {event.get('previous', '-')}
-        
-        분석 내용:
-        1. 결과가 예상 대비 어떠한가? (서프라이즈/쇼크)
-        2. 주요 자산(나스닥, 달러, 국채)에 미칠 단기 영향은?
-        3. 향후 24시간 내 권장 트레이딩 전략
-        
-        한국어로 속보 리포트 형식으로 작성하세요.
+        당신은 긴급 속보를 전하는 금융 시장 분석가입니다.
+        방금 발표된 경제 지표 결과를 분석하고 시장에 미칠 영향을 즉시 보고하세요.
+
+        [지표 결과 속보]
+        - 지표명: {event['title']} ({event['country']})
+        - 실제 결과: {event['actual']}
+        - 시장 예상치: {event.get('forecast', '-')}
+        - 이전 수치: {event.get('previous', '-')}
+
+        [분석 요구사항]
+        1. **헤드라인**: 결과를 한 문장으로 강력하게 요약하세요. (예: "CPI 쇼크, 예상치 대폭 상회하며 인플레 우려 재점화")
+        2. **상세 분석**: 실제 결과가 예상치와 비교해 어떤 의미를 갖는지 해석하세요. (서프라이즈 여부, 추세 변화 등)
+        3. **시장 파급력**: 이 결과가 연준(Fed)의 금리 정책과 주요 자산(주식, 채권, 환율)에 미칠 단기/중기 영향을 예측하세요.
+        4. **Actionable Insight**: 지금 당장 투자자가 취해야 할 포지션 조정이나 주의사항을 제시하세요.
+
+        한국어로 작성하며, 투자자들이 긴박한 상황에서 빠르게 상황을 파악할 수 있도록 핵심 위주로 서술하세요.
         """
         try:
-            if hasattr(self.ai, '_generate_with_gemini') and self.ai.gemini_key:
+            if self.ai.gemini_key:
                 return await asyncio.to_thread(self.ai._generate_with_gemini, prompt)
-            return f"결과 발표 속보: {event['actual']} (예상 대비 변동성 확대 유의)"
+            return f"결과 발표 속보: {event['actual']} (AI 분석 불가 - API 키 확인 필요)"
         except Exception as e:
             logger.error(f"AI Post-event report failed: {e}")
-            return "결과 분석 생성 실패"
+            return f"결과 분석 중 오류 발생: {event['actual']}"
 
     async def get_monthly_outlook_ai(self, month_date: str) -> Dict[str, Any]:
         """AI를 활용한 고도화된 월간 전망 생성"""

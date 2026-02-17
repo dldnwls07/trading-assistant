@@ -1,0 +1,15 @@
+__pycache__
+.venv
+.env
+.git
+.idea
+.vscode
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+frontend/node_modules
+frontend/.next
+frontend/build
+frontend/dist
+trading_assistant.db

@@ -192,8 +192,31 @@ const ScreenerPage = ({ settings }) => {
                                                 </div>
                                             </td>
                                             <td className="px-10 py-6 whitespace-normal">
-                                                <div className={`text-sm font-medium leading-relaxed opacity-80 line-clamp-2 max-w-sm`}>
-                                                    {rec.reason}
+                                                <div className="flex flex-col gap-2">
+                                                    {/* Multi-Timeframe Signals */}
+                                                    {rec.signals && (
+                                                        <div className="flex gap-2 mb-1">
+                                                            {['short', 'medium', 'long'].map((tf) => {
+                                                                const sig = rec.signals[tf];
+                                                                if (!sig) return null;
+
+                                                                let color = 'bg-gray-100 text-gray-600';
+                                                                if (sig.signal === 'BUY' || sig.signal === 'STRONG_BUY') color = 'bg-red-100 text-red-600';
+                                                                else if (sig.signal === 'SELL' || sig.signal === 'STRONG_SELL') color = 'bg-blue-100 text-blue-600';
+
+                                                                const labelMap = { short: '단기', medium: '중기', long: '장기' };
+
+                                                                return (
+                                                                    <span key={tf} className={`px-2 py-1 rounded text-[10px] font-bold ${color}`}>
+                                                                        {labelMap[tf]} {sig.signal}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                    <div className={`text-sm font-medium leading-relaxed opacity-80 whitespace-pre-wrap`}>
+                                                        {rec.reason.split('\n').filter(line => !line.includes('시계열 분석:')).join('\n')}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="px-10 py-6 whitespace-nowrap text-center">

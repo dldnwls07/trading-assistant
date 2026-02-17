@@ -9,22 +9,10 @@ const processTime = (time: string | number | Date): Time => {
     return time as Time;
 };
 
+import { OhlcvData, AnalysisResult } from '../types/api';
+
 interface ChartConfig {
     [key: string]: boolean;
-}
-
-interface AnalysisData {
-    key_levels?: {
-        levels: number[];
-        current_price: number;
-    };
-    trendlines?: {
-        type: 'uptrend' | 'downtrend';
-        start_time: string;
-        start_price: number;
-        end_time: string;
-        end_price: number;
-    }[];
 }
 
 interface ChartOptions {
@@ -36,9 +24,9 @@ interface ChartOptions {
 export const useChartIndicators = (
     chart: IChartApi | null,
     mainSeriesRef: React.MutableRefObject<ISeriesApi<"Candlestick"> | null>,
-    data: any[],
+    data: OhlcvData[],
     chartConfig: ChartConfig,
-    analysis: AnalysisData | null,
+    analysis: AnalysisResult | null,
     options: ChartOptions = {}
 ) => {
     const { upColor = '#ef4444', downColor = '#3b82f6', isDark = true } = options;

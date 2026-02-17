@@ -22,6 +22,8 @@ const Toggle: React.FC<ToggleProps> = ({ label, value, onToggle }) => (
     </div>
 );
 
+import { OhlcvData, AnalysisResult } from '../types/api';
+
 export interface ChartOptions {
     upColor?: string;
     downColor?: string;
@@ -29,11 +31,11 @@ export interface ChartOptions {
 }
 
 export interface StockChartProps {
-    data: any[]; // TODO: Define strict data interface
+    data: OhlcvData[];
     interval: string;
     options?: ChartOptions;
     chartType?: string; // Added prop
-    analysis?: any;
+    analysis?: AnalysisResult | null;
 }
 
 export const StockChart: React.FC<StockChartProps> = ({ data, interval, options = {}, analysis = null }) => {

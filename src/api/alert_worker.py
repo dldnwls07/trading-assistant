@@ -2,6 +2,8 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
+import json
+import os
 from src.data.storage import get_storage
 from src.data.collector import MarketDataCollector
 from src.utils.notifications import send_alert
@@ -10,13 +12,45 @@ from src.agents.event_calendar import EventCalendar
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("alert-worker")
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from datetime import timezone, timedelta
+    class ZoneInfo:
+        def __init__(self, key): 
+            self.key = key
+        def utcoffset(self, dt):
+            return timedelta(hours=9)
+
+KST = ZoneInfo("Asia/Seoul")
+
 storage = get_storage()
 collector = MarketDataCollector()
 calendar = EventCalendar()
 
+STATE_FILE = "data/alert_state.json"
+
+def load_alert_state():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load state: {e}")
+            return {}
+    return {}
+
+def save_alert_state(state):
+    try:
+        os.makedirs("data", exist_ok=True)
+        with open(STATE_FILE, 'w') as f:
+            json.dump(state, f)
+    except Exception as e:
+        logger.error(f"Failed to save state: {e}")
+
 async def check_alerts():
     """가격 및 이벤트 알림 체크 루틴 (비동기)"""
-    logger.info(f"Checking alerts at {datetime.now()}")
+    logger.info(f"Checking alerts at {datetime.now(KST)}")
     
     try:
         # DB 초기화 확인 (비동기)
@@ -62,28 +96,42 @@ async def main_loop():
     logger.info("Async Alert Worker Started...")
     notifier = get_notifier()
     
-    # 마지막 지표 브리핑 날짜
-    last_briefing_date = None
-    last_weekly_date = None
+    # 상태 로드
+    state = load_alert_state()
+    last_briefing_date = state.get("last_daily")
+    last_weekly_date = state.get("last_weekly")
+    last_monthly_date = state.get("last_monthly")
     
-    # 알림 중복 방지를 위한 추적 (최근 지표 위주)
+    # 마지막 알림 ID 로드 (메모리에서 관리하되, 재시작 시 초기화되는 점 보완 필요하면 파일 저장 고려)
+    # 현재는 최근 100개만 유지하는 방식
     last_notified_event_ids = set()
     
+    logger.info(f"Loaded state: Daily={last_briefing_date}, Weekly={last_weekly_date}")
+
     while True:
         await check_alerts()
         
-        now = datetime.now()
+        # [중요] 사용자의 요청: 반드시 "한국 시간" 기준이어야 함
+        now = datetime.now(KST)
         today = now.strftime("%Y-%m-%d")
         
-        # [1] 매일 오전 9시 정각 데일리 브리핑
-        if now.hour == 9 and now.minute == 0 and last_briefing_date != today:
+        # [1] 매일 오전 9시 데일리 브리핑 (9시 이후 실행되면 즉시 발송)
+        # 조건: 9시 이상이고, 오늘 발송된 기록이 없어야 함
+        if now.hour >= 9 and last_briefing_date != today:
+            logger.info(f"Sending Daily Briefing for {today}...")
             try:
                 cal_data = await calendar.get_calendar_v2(start_date=today, end_date=today, storage=storage)
                 events = cal_data.get('events', [])
                 
                 if events:
                     fields = []
-                    for e in events[:20]: # 너무 많으면 자름
+                    # 중요도 정렬: Critical -> High -> Medium -> Low
+                    sorted_events = sorted(events, key=lambda x: (
+                        0 if x['importance'] == 'critical' else 1 if x['importance'] == 'high' else 2, 
+                        x.get('time', '23:59')
+                    ))
+                    
+                    for e in sorted_events[:20]: 
                         imp_icon = "🔴" if e['importance'] == 'critical' else "🟠" if e['importance'] == 'high' else "🟡"
                         fields.append({
                             "name": f"{imp_icon} {e['time']} [{e['country']}]",
@@ -98,21 +146,31 @@ async def main_loop():
                         fields=fields,
                         thumbnail_url="https://cdn-icons-png.flaticon.com/512/2693/2693507.png"
                     )
+                else:
+                    logger.info("No events today, skipping message but marking as done.")
+
+                # 성공 시 상태 저장
                 last_briefing_date = today
+                state["last_daily"] = today
+                save_alert_state(state)
+                
             except Exception as e:
                 logger.error(f"Daily briefing error: {e}")
 
         # [2] 매주 월요일 오전 9시 주간 브리핑
-        if now.weekday() == 0 and now.hour == 9 and now.minute == 0 and last_weekly_date != today:
+        if now.weekday() == 0 and now.hour >= 9 and last_weekly_date != today:
+            logger.info(f"Sending Weekly Briefing for week of {today}...")
             next_week = (now + timedelta(days=7)).strftime("%Y-%m-%d")
             try:
                 cal_data = await calendar.get_calendar_v2(start_date=today, end_date=next_week, storage=storage)
+                # 중요 이벤트만 필터링
                 events = [e for e in cal_data.get('events', []) if e['importance'] in ['critical', 'high']]
                 
                 if events:
                     fields = []
                     curr_d = ""
-                    for e in events[:15]:
+                    # 날짜별 그룹화
+                    for e in events[:20]:
                         if curr_d != e['date']:
                             curr_d = e['date']
                             fields.append({"name": f"📅 {curr_d}", "value": "---", "inline": False})
@@ -124,29 +182,41 @@ async def main_loop():
                         color=15844367, # Gold
                         fields=fields
                     )
+                
+                last_weekly_date = today
+                state["last_weekly"] = today
+                save_alert_state(state)
+
             except Exception as e:
                 logger.error(f"Weekly briefing error: {e}")
-            last_weekly_date = today
 
         # [3] 매월 1일 오전 9시 월간 전망 브리핑
-        if now.day == 1 and now.hour == 9 and now.minute == 0 and last_briefing_date != (today + "_month"):
+        # 월간 브리핑 키: "YYYY-MM_month"
+        month_key = f"{today[:7]}_month"
+        
+        if now.day == 1 and now.hour >= 9 and last_monthly_date != month_key:
+            logger.info(f"Sending Monthly Outlook for {month_key}...")
             try:
                 outlook = calendar.get_monthly_outlook(today)
                 fields = [
                     {"name": "📌 핵심 테마", "value": "\n".join([f"• {t}" for t in outlook['key_themes']]), "inline": False},
                     {"name": "🎯 대응 전략", "value": "\n".join([f"• {s}" for s in outlook['strategy']]), "inline": False}
                 ]
-                if outlook['critical_dates']:
+                if outlook.get('critical_dates'): # get() 사용으로 안전 접근
                     fields.append({"name": "⚠️ 주의 날짜", "value": "\n".join([f"• {d['date']}: {d['event']}" for d in outlook['critical_dates']]), "inline": False})
                 
                 await notifier.send_message(
-                    content=outlook['summary'],
-                    title=f"🌟 {outlook['title']}",
+                    content=outlook.get('summary', '이번 달 시장 전망입니다.'),
+                    title=f"🌟 {outlook.get('title', '월간 시장 전망')}",
                     color=10181046, # Purple
                     fields=fields,
                     thumbnail_url="https://cdn-icons-png.flaticon.com/512/3652/3652191.png"
                 )
-                last_briefing_date = today + "_month"
+                
+                last_monthly_date = month_key
+                state["last_monthly"] = month_key
+                save_alert_state(state)
+
             except Exception as e:
                 logger.error(f"Monthly outlook error: {e}")
 

@@ -1,8 +1,14 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Zap, Activity, Clock, Star } from 'lucide-react';
+import { AnalysisResult } from '../../types/api';
 
-const TradingSetup = ({ analysis, isDark }) => {
+interface TradingSetupProps {
+    analysis: AnalysisResult | null;
+    isDark: boolean;
+}
+
+const TradingSetup: React.FC<TradingSetupProps> = ({ analysis, isDark }) => {
     if (!analysis?.consensus?.global_ensemble) return null;
 
     const setup = analysis.consensus.global_ensemble;
@@ -51,11 +57,11 @@ const TradingSetup = ({ analysis, isDark }) => {
                     </p>
                     {analysis.medium_term?.full_analysis?.ml_forecast?.success ? (
                         <>
-                            <div className={`text-2xl font-black mb-1 ${analysis.medium_term.full_analysis.ml_forecast.direction === '상승' ? 'text-green-500' : 'text-red-500'}`}>
-                                {analysis.medium_term.full_analysis.ml_forecast.direction} ({(analysis.medium_term.full_analysis.ml_forecast.predicted_return * 100).toFixed(1)}%)
+                            <div className={`text-2xl font-black mb-1 ${analysis.medium_term!.full_analysis!.ml_forecast!.direction === '상승' ? 'text-green-500' : 'text-red-500'}`}>
+                                {analysis.medium_term!.full_analysis!.ml_forecast!.direction} ({(analysis.medium_term!.full_analysis!.ml_forecast!.predicted_return * 100).toFixed(1)}%)
                             </div>
-                            <p className="text-[11px] font-medium opacity-60 leading-relaxed line-clamp-3" title={analysis.medium_term.full_analysis.ml_forecast.message}>
-                                {analysis.medium_term.full_analysis.ml_forecast.message}
+                            <p className="text-[11px] font-medium opacity-60 leading-relaxed line-clamp-3" title={analysis.medium_term!.full_analysis!.ml_forecast!.message}>
+                                {analysis.medium_term!.full_analysis!.ml_forecast!.message}
                             </p>
                         </>
                     ) : (
@@ -72,17 +78,17 @@ const TradingSetup = ({ analysis, isDark }) => {
                     {analysis.medium_term?.full_analysis?.backtest?.success ? (
                         <div className="space-y-3">
                             <div className="flex items-end gap-2">
-                                <span className="text-2xl font-black">{analysis.medium_term.full_analysis.backtest.win_rate}%</span>
+                                <span className="text-2xl font-black">{analysis.medium_term!.full_analysis!.backtest!.win_rate}%</span>
                                 <span className="text-[10px] font-bold opacity-50 mb-1">Win Rate</span>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-[9px] font-black opacity-40 uppercase">Profit Factor</p>
-                                    <p className="text-sm font-bold">{analysis.medium_term.full_analysis.backtest.profit_factor}</p>
+                                    <p className="text-sm font-bold">{analysis.medium_term!.full_analysis!.backtest!.profit_factor}</p>
                                 </div>
                                 <div>
                                     <p className="text-[9px] font-black opacity-40 uppercase">Max Drawdown</p>
-                                    <p className="text-sm font-bold text-red-500">{analysis.medium_term.full_analysis.backtest.mdd_pct}%</p>
+                                    <p className="text-sm font-bold text-red-500">{analysis.medium_term!.full_analysis!.backtest!.mdd_pct}%</p>
                                 </div>
                             </div>
                         </div>

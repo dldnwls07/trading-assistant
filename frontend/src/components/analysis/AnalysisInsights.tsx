@@ -1,8 +1,22 @@
 import React from 'react';
 import { BarChart3, MessageSquare, Zap, Star, Eye, ChevronRight, Activity } from 'lucide-react';
 import HelpTooltip from '../HelpTooltip';
+import { AnalysisResult } from '../../types/api';
 
-const AnalysisInsights = ({ analysis, selectedView, setSelectedView, setSelectedInterval, isDark, t, onOpenReport, onUpdateHistory }) => {
+interface AnalysisInsightsProps {
+    analysis: AnalysisResult | null;
+    selectedView: string;
+    setSelectedView: (view: string) => void;
+    setSelectedInterval: (interval: string) => void;
+    isDark: boolean;
+    t: Record<string, string>; // Translation object
+    onOpenReport: () => void;
+    onUpdateHistory: (interval: string) => void;
+}
+
+const AnalysisInsights: React.FC<AnalysisInsightsProps> = ({
+    analysis, selectedView, setSelectedView, setSelectedInterval, isDark, t, onOpenReport, onUpdateHistory
+}) => {
     return (
         <div className={`rounded-2xl border glass p-6 mb-8 transition-all duration-300 ${isDark ? 'border-slate-800' : 'border-gray-100'}`}>
             <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">

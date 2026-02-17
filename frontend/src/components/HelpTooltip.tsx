@@ -2,16 +2,26 @@ import React, { useState } from 'react';
 import { Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const HelpTooltip = ({ indicatorId, title, isDark }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [view, setView] = useState('beginner');
-    const [explanation, setExplanation] = useState('');
-    const [loading, setLoading] = useState(false);
+interface HelpTooltipProps {
+    indicatorId: string;
+    title: string;
+    isDark: boolean;
+}
+
+const HelpTooltip: React.FC<HelpTooltipProps> = ({ indicatorId, title, isDark }) => {
+    const [isOpen, setIsOpen] = useState<boolean>(false);
+    const [view, setView] = useState<'beginner' | 'expert'>('beginner');
+    const [explanation, setExplanation] = useState<string>('');
+    const [loading, setLoading] = useState<boolean>(false);
 
     const fetchExplanation = async () => {
         if (explanation) return;
         setLoading(true);
         try {
+            // Updated to fetch from the dictionary specific endpoint
+            // Note: Assuming the backend endpoint is accessible via relative path if proxied, 
+            // but keeping the hardcoded localhost for now as per original file.
+            // Ideally should be /api/dictionary...
             const res = await fetch(`http://127.0.0.1:8000/api/dictionary?indicator_id=${indicatorId}&view=${view}`);
             const data = await res.json();
             setExplanation(data.explanation);
@@ -27,7 +37,7 @@ const HelpTooltip = ({ indicatorId, title, isDark }) => {
         fetchExplanation();
     };
 
-    const toggleView = async (newView) => {
+    const toggleView = async (newView: 'beginner' | 'expert') => {
         setView(newView);
         setLoading(true);
         try {

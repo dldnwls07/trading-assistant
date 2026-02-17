@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 from contextlib import asynccontextmanager
 from src.data.loader import krx_loader
 
-# === Lifespan Manager ===
+# === Lifespan Manager (Application Lifecycle) ===
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup ---
@@ -43,43 +43,55 @@ async def lifespan(app: FastAPI):
     # 1. DB Initialization
     await storage.initialize()
     
-    # 2. Background Data Loading
+    # 2. Background Data Loading (Non-blocking)
+    # 별도 스레드에서 KRX 데이터 로딩 시작
     asyncio.create_task(load_krx_bg())
     
-    # 3. System Alert (로그로 대체하여 알람 도배 방지)
-    logger.info("🚀 Trading Assistant v2.0 서버가 시작되었습니다.")
+    # 3. System Alert (로그로 대체)
+    logger.info("✅ Trading Assistant v2.0 서버가 준비되었습니다.")
     
-    # 4. Background Workers
+    # 4. Background Workers (Alerts & AutoTrader)
     from src.api.alert_worker import check_alerts
     from src.agents.auto_trader import AutoTrader
     
+    # 워커 루프 정의 (예외 처리 포함)
     async def alert_loop():
-        logger.info("AlertWorker loop started.")
+        logger.info("⏰ AlertWorker loop started.")
         while True:
             try:
                 await check_alerts()
             except Exception as e:
                 logger.error(f"Alert loop error: {e}")
-            await asyncio.sleep(60)
+            await asyncio.sleep(60) # 1분 주기
 
     async def trader_loop():
-        logger.info("AutoTrader loop started.")
+        logger.info("🤖 AutoTrader loop started.")
         trader = AutoTrader()
         while True:
             try:
                 await trader.run_once()
             except Exception as e:
                 logger.error(f"Trader loop error: {e}")
-            await asyncio.sleep(trader.trade_interval)
+            
+            # 트레이딩 인터벌 (기본 1시간)
+            interval = int(os.getenv("TRADE_INTERVAL", "3600"))
+            await asyncio.sleep(interval)
 
-    asyncio.create_task(alert_loop())
-    asyncio.create_task(trader_loop())
+    # 백그라운드 태스크로 워커 실행
+    alert_task = asyncio.create_task(alert_loop())
+    trader_task = asyncio.create_task(trader_loop())
     
     yield # Server runs here
     
     # --- Shutdown ---
     logger.info("🛑 Server is shutting down...")
-    # await send_alert("🛑 Trading Assistant v2.0 서버가 정상적으로 종료되었습니다.", title="System Shutdown")
+    
+    # 워커 종료 (Optional: Cancel tasks if needed)
+    alert_task.cancel()
+    trader_task.cancel()
+    
+    # DB 연결 종료 등 정리 작업
+    # await storage.close() 
 
 app = FastAPI(
     title="Trading Assistant API v2.0",
@@ -152,6 +164,7 @@ screener = StockScreener()
 chart_master = ChartMaster()
 
 async def load_krx_bg():
+    """백그라운드에서 KRX 데이터 로딩"""
     if krx_loader:
         await asyncio.to_thread(krx_loader.load)
 

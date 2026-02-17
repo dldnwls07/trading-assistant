@@ -1,8 +1,14 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Shield, LayoutDashboard, CheckCircle2, AlertTriangle, TrendingUp, Zap } from 'lucide-react';
+import { AnalysisResult } from '../../types/api';
 
-const StrategyCard = ({ analysis, isDark }) => {
+interface StrategyCardProps {
+    analysis: AnalysisResult | null;
+    isDark: boolean;
+}
+
+const StrategyCard: React.FC<StrategyCardProps> = ({ analysis, isDark }) => {
     if (!analysis?.market_regime) return null;
 
     return (
@@ -59,7 +65,7 @@ const StrategyCard = ({ analysis, isDark }) => {
                 </div>
 
                 <div className="space-y-3">
-                    {analysis.strategy_checklist?.map((item) => (
+                    {analysis.strategy_checklist ? analysis.strategy_checklist.map((item) => (
                         <div
                             key={item.id}
                             className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${item.status ? (isDark ? 'bg-green-500/5 border-green-500/20' : 'bg-green-50 border-green-100') : (isDark ? 'bg-slate-800/30 border-slate-700 opacity-60' : 'bg-gray-50 border-gray-100 opacity-60')}`}
@@ -82,7 +88,9 @@ const StrategyCard = ({ analysis, isDark }) => {
                                 </div>
                             )}
                         </div>
-                    ))}
+                    )) : (
+                        <div className="text-sm opacity-50">No checklist available.</div>
+                    )}
                 </div>
 
                 <div className="mt-6 flex items-center gap-2 text-[11px] font-medium opacity-50 italic">

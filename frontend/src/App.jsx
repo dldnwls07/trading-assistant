@@ -4,7 +4,7 @@ import Navigation from './components/Navigation';
 import SettingsModal from './components/SettingsModal';
 
 // Pages
-import AnalysisPage from './pages/AnalysisPage';
+import AnalysisPage from './pages/AnalysisPage.tsx';
 import ChatPage from './pages/ChatPage';
 import CalendarPage from './pages/CalendarPage';
 import PortfolioPage from './pages/PortfolioPage';

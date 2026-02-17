@@ -84,13 +84,30 @@ class StockScreener:
             # 등락률 계산 (Short term info or calculate from price)
             # 여기서는 편의상 medium_term의 신호 참고
             
+            # 시간 프레임별 신호 구조화
+            signals = {
+                "short": {
+                    "signal": mt_result.get('short_term', {}).get('signal', 'N/A'),
+                    "score": mt_result.get('short_term', {}).get('score', 0)
+                },
+                "medium": {
+                    "signal": mt_result.get('medium_term', {}).get('signal', 'N/A'),
+                    "score": mt_result.get('medium_term', {}).get('score', 0)
+                },
+                "long": {
+                    "signal": mt_result.get('long_term', {}).get('signal', 'N/A'),
+                    "score": mt_result.get('long_term', {}).get('score', 0)
+                }
+            }
+
             return {
                 "ticker": ticker,
                 "score": round(final_score, 1),
                 "signal": mt_result['consensus'].get('consensus', '알 수 없음'),
                 "reason": self._generate_reason(mt_result, investor_style),
+                "signals": signals, # 구조화된 신호 추가
                 "current_price": current_price,
-                "change_1d": 0.0 # TODO: change_1d는 별도로 구하거나 mt_result에 포함시켜야 함. 우선 0 처리.
+                "change_1d": 0.0
             }
         except Exception as e:
             logger.error(f"{ticker} 분석 중 오류: {e}")
