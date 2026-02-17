@@ -1005,38 +1005,49 @@ async def health_check():
     }
 
 # === 정적 파일 서빙 및 SPA 라우팅 (최하단 배치) ===
-# 프로젝트 루트 -> frontend -> dist 경로 탐색
-root_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-dist_path = os.path.join(root_path, "frontend", "dist")
+# === 정적 파일 서빙 및 SPA 라우팅 (최하단 배치) ===
+# 1. 경로 탐색: 실행 위치 기준 또는 파일 위치 기준
+current_dir = os.getcwd()
+file_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(file_dir))) # src/api/server.py -> project_root
 
-if os.path.exists(dist_path):
-    # assets 폴더 마운트 (우선순위 높음)
-    assets_path = os.path.join(dist_path, "assets")
-    if os.path.exists(assets_path):
-        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+# 후보 경로들
+possible_paths = [
+    os.path.join(current_dir, "frontend", "dist"),
+    os.path.join(project_root, "frontend", "dist"),
+    os.path.join(current_dir, "dist"), 
+]
 
-    # 가상 계좌 주소 등 기타 정적 파일 마운트
-    app.mount("/static", StaticFiles(directory=dist_path), name="static")
+dist_path = None
+for path in possible_paths:
+    if os.path.exists(path) and os.path.exists(os.path.join(path, "index.html")):
+        dist_path = path
+        logger.info(f"✅ Frontend dist found at: {dist_path}")
+        break
 
-    @app.get("/")
-    async def serve_index():
+if dist_path:
+    app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
+    # 루트 레벨 정적 파일 (favicon 등)
+    app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
+
+    # SPA Fallback (사실 StaticFiles(html=True)가 대부분 처리하지만, 명시적 처리를 위해)
+    @app.exception_handler(404)
+    async def custom_404_handler(request, exc):
+        # API 요청은 404 그대로 반환
+        if request.url.path.startswith("/api"):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        # 그 외(페이지 새로고침 등)는 index.html 반환
         return FileResponse(os.path.join(dist_path, "index.html"))
 
-    # SPA 클라이언트 사이드 라우팅을 위한 Catch-all
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        # API 요청이나 문서 요청은 404 처리 (이미 위에서 처리되지 않은 경우)
-        if full_path.startswith(("api/", "docs", "openapi.json", "analyze", "history", "search")):
-            raise HTTPException(status_code=404)
-        
-        index_file = os.path.join(dist_path, "index.html")
-        if os.path.exists(index_file):
-            return FileResponse(index_file)
-        raise HTTPException(status_code=404)
 else:
+    logger.warning("⚠️ Frontend dist NOT found. API Only Mode.")
     @app.get("/")
     async def root():
-        return {"status": "ok", "message": "API Server is running (Frontend dist not found)"}
+        return {
+            "status": "ok", 
+            "message": "Trading Assistant API Server is running", 
+            "note": "Frontend build not found. Please run 'npm run build' in frontend directory."
+        }
 
 # 실행용: uvicorn src.api.server:app --reload --host 0.0.0.0 --port 8000
 
