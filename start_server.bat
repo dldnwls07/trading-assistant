@@ -1,67 +1,76 @@
 @echo off
-chcp 65001 >nul
-setlocal
+setlocal enabledelayedexpansion
 
-:: [중요] 스크립트가 있는 폴더로 이동 (관리자 실행 시 오류 방지)
+echo [INFO] Script Directory: %~dp0
 cd /d "%~dp0"
 
 echo ========================================================
-echo  🚀 Trading Assistant Server (Laptop Mode)
+echo  🚀 Trading Assistant Server (Debug Mode)
 echo ========================================================
-echo.
 
-:: 가상환경 생성 (.venv)
+:: 1. Check Python
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Python is not installed or not in PATH.
+    pause
+    exit /b 1
+)
+
+:: 2. Setup/Activate Venv
 if not exist ".venv" (
-    echo [INFO] Creating Virtual Environment (.venv)...
-    python -m venv .venv
+    echo [INFO] Creating Virtual Environment...
+    python -m venv .venv || pause && exit /b 1
 )
 
-:: 가상환경 활성화
-if exist ".venv\Scripts\activate" (
-    call .venv\Scripts\activate
-) else (
-    echo [ERROR] Virtual environment activation failed!
+echo [INFO] Activating Virtual Environment...
+call .venv\Scripts\activate
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to activate .venv
     pause
     exit /b 1
 )
 
-:: 의존성 설치 (requirements.txt)
-if exist "requirements.txt" (
-    echo [INFO] Installing Python Dependencies (this may take a while)...
-    pip install -r requirements.txt
-) else (
-    echo [ERROR] requirements.txt not found!
+:: 3. Install Dependencies
+echo [INFO] Checking dependencies...
+if not exist "requirements.txt" (
+    echo [ERROR] requirements.txt missing!
+    pause
+    exit /b 1
+)
+pip install -r requirements.txt
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to install dependencies.
     pause
     exit /b 1
 )
 
-:: 프론트엔드 빌드 (Node.js 있으면)
+:: 4. Build Frontend (Try-Catch style)
+echo [INFO] Checking Frontend...
 where npm >nul 2>nul
 if %errorlevel% equ 0 (
     if exist "frontend" (
-        echo [INFO] Building Frontend...
         cd frontend
+        echo [INFO] Installing Frontend Deps...
         call npm install
+        echo [INFO] Building Frontend...
         call npm run build
         cd ..
     )
 ) else (
-    echo [WARNING] Node.js not found. Skipping Frontend Build.
+    echo [WARNING] npm not found. Skipping frontend build.
 )
 
-:: IP 주소 출력 (참고용)
+:: 5. Start Server
 echo.
-echo [NETWORK INFO]
-ipconfig | findstr /c:"IPv4"
-echo.
-
-:: 서버 실행
-echo [INFO] Starting Server on 0.0.0.0:8000...
-echo        - Access Locally: http://localhost:8000
-echo        - Access Remotely: Use the IPv4 Address shown above
+echo [INFO] Starting Uvicorn Server...
+echo [INFO] Open http://localhost:8000 in your browser.
 echo.
 
 python -m uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --reload
 
-endlocal
+if %errorlevel% neq 0 (
+    echo [ERROR] Server crashed with error code !errorlevel!
+    pause
+)
+
 pause
