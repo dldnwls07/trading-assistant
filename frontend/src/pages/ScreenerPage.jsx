@@ -229,9 +229,19 @@ const ScreenerPage = ({ settings }) => {
                                 ) : (
                                     <tr>
                                         <td colSpan="4" className="px-10 py-24 text-center">
-                                            <div className="flex flex-col items-center gap-4 opacity-20">
-                                                <Rocket className="w-16 h-16 animate-bounce" />
-                                                <p className="text-sm font-black uppercase tracking-[0.2em]">{loading ? "Synchronizing Neural Fabric..." : "No Vectors Identified"}</p>
+                                            <div className="flex flex-col items-center gap-4 opacity-50">
+                                                {loading ? (
+                                                    <>
+                                                        <Activity className="w-16 h-16 text-blue-500 animate-spin" />
+                                                        <p className="text-sm font-black uppercase tracking-[0.2em] text-blue-400">Synchronizing Neural Fabric...</p>
+                                                        <p className="text-[10px] text-slate-500 font-bold">Fetching Multi-Timeframe Vectors & Market Pulsar</p>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Rocket className="w-16 h-16 text-slate-700" />
+                                                        <p className="text-sm font-black uppercase tracking-[0.2em]">No Vectors Identified</p>
+                                                    </>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>

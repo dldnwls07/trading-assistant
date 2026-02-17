@@ -65,7 +65,7 @@ class AutoTrader:
     async def _get_macro_risk(self) -> Dict[str, Any]:
         """현재 시장의 거시 경제 리스크 상태를 가져옵니다."""
         try:
-            return self.calendar.calculate_event_risk(days_ahead=2)
+            return await self.calendar.calculate_event_risk(days_ahead=2)
         except Exception as e:
             logger.error(f"Error getting macro risk: {e}")
             return {"impact_score": 0.0, "is_fomc_week": False, "critical_events": [], "event_count": 0}
@@ -118,10 +118,21 @@ class AutoTrader:
                  pass
 
             if action == "SELL":
-                current_price = daily_df['Close'].iloc[-1]
+                current_price = float(daily_df['Close'].iloc[-1])
+                avg_price = float(pos.get('avg_price', current_price))
+                profit_rate = ((current_price - avg_price) / avg_price) * 100 if avg_price > 0 else 0
+                
                 reason = decision.get("reason", "AI 판단 매도")
-                logger.info(f"🚨 AI 매도 결정: {ticker} | 이유: {reason}")
-                await send_alert(f"🤖 **AI의 매도 분석**: {reason}\n(분석 시간: {market_time})", title=f"AI Decision: {ticker} SELL")
+                logger.info(f"🚨 AI 매도 결정: {ticker} | 수익률: {profit_rate:.2f}% | 이유: {reason}")
+                
+                profit_emoji = "📈" if profit_rate >= 0 else "📉"
+                alert_msg = (
+                    f"🤖 **AI의 매도 분석**: {reason}\n"
+                    f"💰 **수익률**: {profit_emoji} `{profit_rate:.2f}%`\n"
+                    f"⏰ **분석 시간**: {market_time}"
+                )
+                
+                await send_alert(alert_msg, title=f"AI Decision: {ticker} SELL")
                 await self.executor.execute_trade(ticker, 'SELL', pos['quantity'], current_price)
 
     async def _check_and_buy(self):
@@ -175,7 +186,15 @@ class AutoTrader:
                 if quantity > 0:
                     risk_msg = f" (⚠️ 리스크 점수 {impact_score}로 비중 축소)" if impact_score > 0.5 else ""
                     logger.info(f"🎯 AI 최종 승인 완료: {ticker} | 이유: {reason}{risk_msg}")
-                    await send_alert(f"🤖 **AI의 매수 판단 근거**:\n{reason}\n(분석 시간: {market_time}){risk_msg}", title=f"AI Approved: {ticker} BUY")
+                    
+                    buy_msg = (
+                        f"🎯 **AI의 매수 판단 근거**:\n{reason}\n"
+                        f"💵 **예상 매수가**: `{price:,.2f}`\n"
+                        f"📊 **수량**: `{quantity}주`\n"
+                        f"⏰ **분석 시간**: {market_time}{risk_msg}"
+                    )
+                    
+                    await send_alert(buy_msg, title=f"AI Approved: {ticker} BUY")
                     await self.executor.execute_trade(ticker, 'BUY', quantity, price)
                     break
 

@@ -10,7 +10,7 @@ export const useChartResize = (chart, containerRef, isFullscreen) => {
                 // 풀스크린 모드일 때는 window.innerHeight를, 아닐 때는 부모 컨테이너의 높이를 사용
                 // 단, 부모 컨테이너 높이가 제대로 잡히지 않는 경우를 대비해 최소 높이 보장
                 const width = containerRef.current.clientWidth;
-                const height = isFullscreen ? window.innerHeight : Math.max(containerRef.current.clientHeight, 500);
+                const height = isFullscreen ? window.innerHeight : containerRef.current.clientHeight;
 
                 chart.applyOptions({ width, height });
                 chart.timeScale().fitContent();

@@ -22,15 +22,19 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest",
+    "pytest-mock",
 ]
 
 [project.scripts]
 trading-assist = "trading_assist.cli:main"
 
-[tool.setuptools]
-packages = ["trading_assist"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = [
     "tests",
+]
+pythonpath = [
+    "."
 ]

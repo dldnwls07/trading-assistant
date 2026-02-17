@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +13,7 @@ import traceback
 from datetime import datetime
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
+from src.utils.notifications import send_alert, get_notifier
 
 # 프로젝트 모듈
 from src.data.collector import MarketDataCollector
@@ -33,6 +34,13 @@ logger = logging.getLogger(__name__)
 
 from contextlib import asynccontextmanager
 from src.data.loader import krx_loader
+import certifi
+
+# === SSL Certificate Patch (Fix curl: 77 / certifi mismatch) ===
+# certifi 경로가 잘못 잡히는 현상을 방지하기 위해 강제로 설정합니다.
+os.environ['SSL_CERT_FILE'] = certifi.where()
+os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+logger.info(f"🛡️ SSL Certificate Path Patched: {certifi.where()}")
 
 # === Lifespan Manager (Application Lifecycle) ===
 @asynccontextmanager
@@ -107,6 +115,8 @@ origins = [
     "http://localhost:5174",  # Fallback Port
     "http://127.0.0.1:5174",
     "http://localhost:3000",
+    "http://localhost:8000",  # Frontend Served
+    "http://127.0.0.1:8000",  # Frontend Served (IP)
     "chrome-extension://*",   # Extension Support
     "https://trading-assistant-all-in-one.onrender.com", # Production URL
 ]
@@ -192,9 +202,7 @@ class AnalysisResponse(BaseModel):
 
 # === API 엔드포인트 ===
 
-@app.get("/")
-async def root():
-    return {"status": "ok", "message": "Trading Assistant Server is running"}
+# === API 엔드포인트 ===
 
 @app.get("/api/health")
 async def health_check():
@@ -247,6 +255,37 @@ def get_final_ticker(ticker: str) -> str:
 from src.services.integration_service import get_integration_service
 integration_service = get_integration_service()
 
+async def notify_analysis_result(ticker: str, result: Dict[str, Any]):
+    """분석 완료 시 디스코드 알림 발송 (Background Task)"""
+    try:
+        final_score = result.get("final_score", 0)
+        signal = result.get("signal", "HOLD")
+        full_report_str = result.get("full_report", "")
+        
+        # 리포트 요약 (첫 2문장 또는 100자)
+        summary = full_report_str[:150].replace('\n', ' ') + "..." if len(full_report_str) > 150 else full_report_str
+        
+        message = (
+            f"📊 **Analysis Completed: {ticker}**\n"
+            f"• Score: `{final_score}`\n"
+            f"• Signal: `{signal}`\n"
+            f"• Summary: {summary}\n"
+        )
+        
+        color_map = {
+            "STRONG_BUY": 5763719,  # Green
+            "BUY": 3066993,         # Light Green
+            "SELL": 15158332,       # Red
+            "STRONG_SELL": 10038562 # Dark Red
+        }
+        color = color_map.get(signal, 9807270) # Default Grey
+        
+        notifier = get_notifier()
+        await notifier.send_message(content=message, title=f"🔍 Analyzed: {ticker}", color=color)
+        
+    except Exception as e:
+        logger.error(f"Notification error: {e}")
+
 async def run_analysis(ticker: str, lang: str = "ko"):
     """
     종합 분석 엔진 실행 (IntegrationService 위임)
@@ -276,12 +315,16 @@ async def run_analysis(ticker: str, lang: str = "ko"):
     return safe_serialize(raw_result)
 
 @app.post("/analyze")
-async def analyze_post(req: AnalysisRequest):
+async def analyze_post(req: AnalysisRequest, background_tasks: BackgroundTasks):
     """POST 방식 분석 엔드포인트"""
     try:
         # Validate Input
         validate_ticker(req.ticker)
         result = await run_analysis(req.ticker)
+        
+        # Send Notification in Background
+        background_tasks.add_task(notify_analysis_result, req.ticker, result)
+        
         return JSONResponse(content=result)
     except HTTPException as he:
         raise he
@@ -290,12 +333,16 @@ async def analyze_post(req: AnalysisRequest):
         raise e  # Let global handler handle it
 
 @app.get("/analyze/{ticker}")
-async def analyze_get(ticker: str):
+async def analyze_get(ticker: str, background_tasks: BackgroundTasks):
     """GET 방식 분석 엔드포인트 (기존 호환성)"""
     try:
         # Validate Input
         validate_ticker(ticker)
         result = await run_analysis(ticker)
+        
+        # Send Notification in Background
+        background_tasks.add_task(notify_analysis_result, ticker, result)
+        
         return JSONResponse(content=result)
     except HTTPException as he:
         raise he
@@ -572,7 +619,7 @@ def safe_serialize(data):
         return data.where(pd.notnull(data), None).to_dict() # NaN 처리 포함
     elif isinstance(data, (np.integer, np.int64)):
         return int(data)
-    elif isinstance(data, (np.floating, np.float64)):
+    elif isinstance(data, (np.floating, np.float32, np.float64)):
         return float(data) if not np.isnan(data) else None
     elif isinstance(data, np.ndarray):
         return data.tolist()
@@ -675,8 +722,48 @@ async def get_calendar(
         raise he
     except Exception as e:
         logger.error(f"Calendar error: {e}")
-        logger.error(traceback.format_exc()) # 상세 에러 로그 출력
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@app.get("/api/calendar/earnings")
+async def get_earnings_calendar(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    country: str = "US",
+    lang: str = "ko"
+):
+    """
+    기업 실적 발표 전용 캘린더
+    """
+    try:
+        from datetime import datetime, timedelta
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        if end_date is None:
+            end_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+            
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+        
+        # 국가별 fetcher 선택
+        if country.upper() == "KR":
+            events = await asyncio.to_thread(event_calendar.naver_earnings_fetcher.fetch, start, end, lang)
+        else:
+            events = await asyncio.to_thread(event_calendar.earnings_fetcher.fetch, start, end, lang)
+        
+        # Sort events by date
+        if events:
+            events.sort(key=lambda x: x.get('date', '9999-12-31'))
+            
+        return safe_serialize({
+            "period": {"start": start_date, "end": end_date},
+            "country": country.upper(),
+            "events": events,
+            "total_events": len(events)
+        })
+    except Exception as e:
+        logger.error(f"Earnings calendar error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/calendar/analyze")
 async def get_event_impact(
@@ -1047,5 +1134,7 @@ else:
             "cwd": os.getcwd()
         }
 
-# 실행용: uvicorn src.api.server:app --reload --host 0.0.0.0 --port 8000
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("src.api.server:app", host="0.0.0.0", port=8000, reload=True)
 

@@ -6,7 +6,10 @@ cd /d "%~dp0"
 :: Trading Assistant Launcher (Split Mode)
 :: -------------------------------------------------------------
 
-:: 1. Initial Checks (Silent Mode)
+:: 1. Cleanup Port 8000 (Force Kill)
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8000') do taskkill /f /pid %%a >nul 2>&1
+
+:: 2. Initial Checks (Silent Mode)
 python --version >nul 2>&1
 if %errorlevel% neq 0 ( exit /b 1 )
 
@@ -54,6 +57,7 @@ echo   * Press any key to stop server...
 echo  ========================================================
 
 :: 4. Launch Server in NEW Window (Logs go there)
+timeout /t 2 >nul
 start "Trading Assistant Server Logs (DO NOT CLOSE)" cmd /k "call .venv\Scripts\activate && python -m uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --reload"
 
 pause >nul

@@ -199,16 +199,16 @@ export const StockChart: React.FC<StockChartProps> = ({ data, interval, options 
     };
 
     const chartContent = (
-        <div className={`w-full bg-[#0f172a] ${isFullscreen ? 'fixed inset-0 z-[9999] h-screen flex flex-col' : 'relative h-[600px] flex flex-col'}`}>
+        <div className={`w-full bg-background flex flex-col transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-[9999] h-screen' : 'relative h-full flex-1'}`}>
             {/* 1. Chart Container (Base Layer) */}
-            <div ref={chartContainerRef} className="w-full flex-1 transition-all duration-300 relative" />
+            <div ref={chartContainerRef} className="w-full flex-1 relative overflow-hidden" />
 
             {/* 2. Top Toolbar (Controls) */}
             <div className="absolute top-3 right-3 z-[50] flex items-center gap-2">
-                <button onClick={() => setShowSettings(!showSettings)} className="p-2 bg-slate-800/80 hover:bg-slate-700 backdrop-blur-md rounded-lg border border-slate-700 transition-all shadow-lg group">
-                    {showSettings ? <X size={18} className="text-slate-400 group-hover:text-white" /> : <Settings size={18} className="text-slate-400 group-hover:text-white" />}
+                <button onClick={() => setShowSettings(!showSettings)} className="p-2 bg-card/80 hover:bg-muted backdrop-blur-md rounded-lg border border-border transition-all shadow-sm group">
+                    {showSettings ? <X size={18} className="text-muted-foreground group-hover:text-foreground" /> : <Settings size={18} className="text-muted-foreground group-hover:text-foreground" />}
                 </button>
-                <button onClick={toggleFullscreen} className={`px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-all shadow-lg flex items-center gap-2 text-white font-bold text-xs ${isFullscreen ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900' : ''}`}>
+                <button onClick={toggleFullscreen} className={`px-3 py-2 bg-primary hover:bg-primary/90 rounded-lg transition-all shadow-sm flex items-center gap-2 text-primary-foreground font-bold text-xs ${isFullscreen ? 'ring-2 ring-ring ring-offset-2 ring-offset-background' : ''}`}>
                     {isFullscreen ? <><Minimize2 size={16} /> EXIT</> : <Maximize2 size={16} />}
                 </button>
             </div>
@@ -229,20 +229,20 @@ export const StockChart: React.FC<StockChartProps> = ({ data, interval, options 
 
             {/* 4. Settings Panel (Overlay) */}
             {showSettings && (
-                <div className="absolute top-16 right-3 z-[60] bg-slate-800/95 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-2xl w-80 max-h-[80vh] overflow-y-auto custom-scrollbar animate-in slide-in-from-top-2 fade-in duration-200">
-                    <h4 className="text-white font-black mb-6 text-sm flex items-center gap-2 uppercase tracking-wide">
-                        <Settings size={14} className="text-blue-500" />
+                <div className="absolute top-14 right-3 z-[60] bg-card/95 backdrop-blur-xl border border-border rounded-xl p-5 shadow-2xl w-80 max-h-[calc(100%-80px)] overflow-y-auto custom-scrollbar animate-in slide-in-from-top-2 fade-in duration-200">
+                    <h4 className="text-foreground font-black mb-5 text-sm flex items-center gap-2 uppercase tracking-wide">
+                        <Settings size={14} className="text-primary" />
                         Intelligence Layer
                     </h4>
 
                     <div className="space-y-6">
                         {/* 1. Trend */}
                         <div>
-                            <h5 className="text-blue-400 text-[10px] mb-3 font-black uppercase tracking-widest flex items-center gap-2">
-                                <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                            <h5 className="text-primary text-[10px] mb-3 font-black uppercase tracking-widest flex items-center gap-2">
+                                <div className="w-1 h-3 bg-primary rounded-full"></div>
                                 Trend Analysis
                             </h5>
-                            <div className="space-y-1 pl-2 border-l border-slate-700/50">
+                            <div className="space-y-1 pl-3 border-l-2 border-muted">
                                 <Toggle label="Supertrend AI" value={chartConfig.showSupertrend} onToggle={() => setChartConfig(c => ({ ...c, showSupertrend: !c.showSupertrend }))} />
                                 <Toggle label="Smart Trend Cloud" value={chartConfig.showTrendCloud} onToggle={() => setChartConfig(c => ({ ...c, showTrendCloud: !c.showTrendCloud }))} />
                                 <Toggle label="SMA Array (5/20/50)" value={chartConfig.showSMA20} onToggle={() => setChartConfig(c => ({ ...c, showSMA20: !c.showSMA20, showSMA5: !c.showSMA5, showSMA50: !c.showSMA50 }))} />
@@ -251,11 +251,11 @@ export const StockChart: React.FC<StockChartProps> = ({ data, interval, options 
 
                         {/* 2. Volatility & Impulse */}
                         <div>
-                            <h5 className="text-emerald-400 text-[10px] mb-3 font-black uppercase tracking-widest flex items-center gap-2">
-                                <div className="w-1 h-4 bg-emerald-500 rounded-full"></div>
+                            <h5 className="text-emerald-500 text-[10px] mb-3 font-black uppercase tracking-widest flex items-center gap-2">
+                                <div className="w-1 h-3 bg-emerald-500 rounded-full"></div>
                                 Volatility & Impulse
                             </h5>
-                            <div className="space-y-1 pl-2 border-l border-slate-700/50">
+                            <div className="space-y-1 pl-3 border-l-2 border-muted">
                                 <Toggle label="Bollinger Bands" value={chartConfig.showBB} onToggle={() => setChartConfig(c => ({ ...c, showBB: !c.showBB }))} />
                                 <Toggle label="RSI Scanner" value={chartConfig.showRSI} onToggle={() => setChartConfig(c => ({ ...c, showRSI: !c.showRSI }))} />
                                 <Toggle label="Volume Flow" value={chartConfig.showVolume} onToggle={() => setChartConfig(c => ({ ...c, showVolume: !c.showVolume }))} />
@@ -264,11 +264,11 @@ export const StockChart: React.FC<StockChartProps> = ({ data, interval, options 
 
                         {/* 3. AI & Macro */}
                         <div>
-                            <h5 className="text-purple-400 text-[10px] mb-3 font-black uppercase tracking-widest flex items-center gap-2">
-                                <div className="w-1 h-4 bg-purple-500 rounded-full"></div>
+                            <h5 className="text-purple-500 text-[10px] mb-3 font-black uppercase tracking-widest flex items-center gap-2">
+                                <div className="w-1 h-3 bg-purple-500 rounded-full"></div>
                                 AI & Macro Vision
                             </h5>
-                            <div className="space-y-1 pl-2 border-l border-slate-700/50">
+                            <div className="space-y-1 pl-3 border-l-2 border-muted">
                                 <Toggle label="Volume Profile (VPVR)" value={chartConfig.showVolumeProfile} onToggle={() => setChartConfig(c => ({ ...c, showVolumeProfile: !c.showVolumeProfile }))} />
                                 <Toggle label="Macro Event Timeline" value={chartConfig.showMacroEvents} onToggle={() => setChartConfig(c => ({ ...c, showMacroEvents: !c.showMacroEvents }))} />
                                 <Toggle label="AI Support & Resistance" value={chartConfig.showSupportResistance} onToggle={() => setChartConfig(c => ({ ...c, showSupportResistance: !c.showSupportResistance }))} />
@@ -284,10 +284,10 @@ export const StockChart: React.FC<StockChartProps> = ({ data, interval, options 
 
             {/* Loading / Empty State Overlay */}
             {(!data || data.length === 0) && (
-                <div className="absolute inset-0 flex items-center justify-center bg-[#0f172a] z-10">
-                    <div className="flex flex-col items-center gap-4 opacity-50">
-                        <Activity className="w-10 h-10 text-blue-500 animate-pulse" />
-                        <span className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">Initializing Quantum Bridge...</span>
+                <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-10">
+                    <div className="flex flex-col items-center gap-4 opacity-70">
+                        <Activity className="w-10 h-10 text-primary animate-pulse" />
+                        <span className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground">Initializing Quantum Bridge...</span>
                     </div>
                 </div>
             )}

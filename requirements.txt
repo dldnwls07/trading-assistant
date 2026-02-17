@@ -16,7 +16,7 @@ scipy>=1.12.0
 python-dotenv>=1.0.0
 holidays>=0.41
 fredapi>=0.5.1
-google-generativeai>=0.3.2
+google-genai
 huggingface_hub>=0.20.0
 beautifulsoup4>=4.12.3
 lxml>=5.1.0

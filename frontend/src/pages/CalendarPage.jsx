@@ -113,7 +113,7 @@ const CalendarPage = ({ settings }) => {
                                 <CalendarIcon className="w-8 h-8" />
                             </div>
                             <h1 className="text-4xl font-black tracking-tighter uppercase whitespace-nowrap">
-                                {t.calendarTitle || 'Economic Calendar'}
+                                {t.cal_title || 'Economic Calendar'}
                             </h1>
                         </div>
                         <p className="text-slate-500 font-bold uppercase text-xs tracking-widest flex items-center gap-2">

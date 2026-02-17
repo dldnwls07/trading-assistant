@@ -14,6 +14,26 @@ interface AnalysisInsightsProps {
     onUpdateHistory: (interval: string) => void;
 }
 
+const TypewriterText = ({ text }: { text: string }) => {
+    const [displayedText, setDisplayedText] = React.useState('');
+
+    React.useEffect(() => {
+        let i = 0;
+        setDisplayedText('');
+        const timer = setInterval(() => {
+            if (i < text.length) {
+                setDisplayedText((prev) => prev + text.charAt(i));
+                i++;
+            } else {
+                clearInterval(timer);
+            }
+        }, 15);
+        return () => clearInterval(timer);
+    }, [text]);
+
+    return <span className="animate-pulse-cursor">{displayedText}</span>;
+};
+
 const AnalysisInsights: React.FC<AnalysisInsightsProps> = ({
     analysis, selectedView, setSelectedView, setSelectedInterval, isDark, t, onOpenReport, onUpdateHistory
 }) => {
@@ -55,8 +75,12 @@ const AnalysisInsights: React.FC<AnalysisInsightsProps> = ({
                             <MessageSquare className="w-5 h-5 text-blue-500" />
                             Quantitative Intelligence Report
                         </p>
-                        <div className="text-sm leading-relaxed whitespace-pre-wrap opacity-90 font-medium terminal-font mb-8 bg-black/30 p-6 rounded-2xl border border-white/5 shadow-inner">
-                            {analysis?.full_report || "Analyzing real-time harmonics and structural shifts..."}
+                        <div className="text-sm leading-relaxed whitespace-pre-wrap opacity-90 font-medium terminal-font mb-8 bg-black/30 p-6 rounded-2xl border border-white/5 shadow-inner min-h-[100px]">
+                            <TypewriterText text={
+                                typeof analysis?.full_report === 'object'
+                                    ? JSON.stringify(analysis.full_report, null, 2)
+                                    : (analysis?.full_report || "Analyzing real-time harmonics and structural shifts...")
+                            } />
                         </div>
 
                         <div className={`p-5 rounded-2xl border ${isDark ? 'bg-blue-500/5 border-blue-500/20' : 'bg-blue-50 border-blue-100'}`}>

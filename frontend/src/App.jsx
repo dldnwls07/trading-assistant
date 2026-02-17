@@ -4,10 +4,12 @@ import Navigation from './components/Navigation';
 import SettingsModal from './components/SettingsModal';
 
 // Pages
-import AnalysisPage from './pages/AnalysisPage.tsx';
+import AnalysisPage from './pages/AnalysisPage';
 import ChatPage from './pages/ChatPage';
 import CalendarPage from './pages/CalendarPage';
+import EarningsPage from './pages/EarningsPage';
 import PortfolioPage from './pages/PortfolioPage';
+import WalletPage from './pages/WalletPage';
 import ScreenerPage from './pages/ScreenerPage';
 
 function App() {
@@ -49,7 +51,7 @@ function App() {
 
   return (
     <Router>
-      <div className={`min-h-screen transition-colors duration-300 ${settings?.darkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
+      <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
         <Navigation settings={settings} onOpenSettings={() => setIsSettingsOpen(true)} />
 
         <SettingsModal
@@ -65,7 +67,9 @@ function App() {
           <Route path="/analysis/:tickerParam" element={<AnalysisPage settings={settings} />} />
           <Route path="/chat" element={<ChatPage settings={settings} />} />
           <Route path="/calendar" element={<CalendarPage settings={settings} />} />
+          <Route path="/earnings" element={<EarningsPage settings={settings} />} />
           <Route path="/portfolio" element={<PortfolioPage settings={settings} />} />
+          <Route path="/wallet" element={<WalletPage settings={settings} />} />
           <Route path="/screener" element={<ScreenerPage settings={settings} />} />
         </Routes>
       </div>

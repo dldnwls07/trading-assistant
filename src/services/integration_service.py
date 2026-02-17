@@ -88,7 +88,10 @@ class IntegrationService:
             }
             
             # 4. 최종 종합 AI 리포트 생성 (모든 데이터 통합)
-            final_result["full_report"] = self.ai_analyzer.generate_report(final_result)
+            # generate_report는 {"score": int, "signal": str, "report": str} 딕셔너리를 반환
+            # full_report는 문자열이어야 하므로 "report" 키만 추출
+            ai_report_dict = self.ai_analyzer.generate_report(final_result)
+            final_result["full_report"] = ai_report_dict.get("report", "AI 분석 리포트 생성 실패")
             
             return final_result
 

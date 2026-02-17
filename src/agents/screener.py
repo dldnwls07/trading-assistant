@@ -18,7 +18,7 @@ class StockScreener:
     
     def __init__(self, analyst: StockAnalyst = None):
         self.analyst = analyst or StockAnalyst()
-        self.collector = MarketDataCollector(use_db=False)
+        self.collector = MarketDataCollector(use_db=True)
         self.multi_analyzer = MultiTimeframeAnalyzer(analyst=self.analyst, collector=self.collector)
     
     async def _fetch_data(self, ticker: str, period: str = "1y", interval: str = "1d") -> Optional[pd.DataFrame]:
@@ -59,7 +59,8 @@ class StockScreener:
         """단일 종목 다중 시간 프레임 분석 및 스타일 적합도 평가"""
         try:
             # 다중 시간 프레임 분석 실행 (Short/Mid/Long Coverage)
-            mt_result = await self.multi_analyzer.analyze_all_timeframes(ticker, index_ticker)
+            # 스크리너에서는 속도 향상을 위해 AI 리포트 생성을 스킵함
+            mt_result = await self.multi_analyzer.analyze_all_timeframes(ticker, index_ticker, skip_report=True)
             
             # 분석 실패 시 중단
             if not mt_result or not mt_result.get('medium_term'):
@@ -78,7 +79,7 @@ class StockScreener:
             style_score = self._apply_style_filter(ticker, full_analysis, investor_style)
             
             # 최종 점수 = 앙상블 점수(또는 컨센서스 점수) * 스타일 적합도
-            base_score = mt_result['consensus'].get('avg_score', 50)
+            base_score = mt_result.get('final_score', 50)
             final_score = base_score * (style_score / 100)
             
             # 등락률 계산 (Short term info or calculate from price)
@@ -103,7 +104,7 @@ class StockScreener:
             return {
                 "ticker": ticker,
                 "score": round(final_score, 1),
-                "signal": mt_result['consensus'].get('consensus', '알 수 없음'),
+                "signal": mt_result.get('signal', '알 수 없음'),
                 "reason": self._generate_reason(mt_result, investor_style),
                 "signals": signals, # 구조화된 신호 추가
                 "current_price": current_price,
@@ -126,6 +127,11 @@ class StockScreener:
 
     def _apply_style_filter(self, ticker: str, analysis: Dict[str, Any], style: str) -> float:
         """투자 스타일에 따른 적합도 점수 계산 (0~100)"""
+        # Defensive check
+        if not isinstance(analysis, dict):
+            # logger.warning(f"Invalid analysis type for {ticker}: {type(analysis)}")
+            return 50.0
+            
         score = 100
         signal = analysis.get('signal', 'HOLD')
         
@@ -160,7 +166,6 @@ class StockScreener:
     
     def _generate_reason(self, mt_result: Dict[str, Any], style: str) -> str:
         """분석 결과를 바탕으로 사람 친화적인 추천 이유 생성 (다중 시간 프레임 반영)"""
-        consensus = mt_result.get('consensus', {})
         short_term = mt_result.get('short_term', {})
         medium_term = mt_result.get('medium_term', {})
         long_term = mt_result.get('long_term', {})
@@ -181,9 +186,10 @@ class StockScreener:
             regime_label = regime # 혹시라도 문자열이면 그대로 사용
             
         # 3. 종합 추천 문구 생성
-        total_score = consensus.get('avg_score', 0)
+        total_score = mt_result.get('final_score', 0)
+        consensus_signal = mt_result.get('signal', '분석 중')
         
-        reason = f"🔍 [AI 종합(v2.1)] {consensus.get('consensus', '분석 중')} ({total_score}점)\n"
+        reason = f"🔍 [AI 종합(v2.1)] {consensus_signal} ({total_score}점)\n"
         reason += f"   • 시장 국면: {regime_label}\n"
         reason += f"   • 시계열 분석: 단기({s_sig}) → 중기({m_sig}) → 장기({l_sig})\n"
         reason += f"   • {style} 전략 적합도 반영됨"
@@ -192,7 +198,7 @@ class StockScreener:
     
     async def get_recommendations(self, style: str = "balanced", market: str = "US", limit: int = 10) -> Dict[str, Any]:
         """AI 추천 종목 조회 (비동기)"""
-        tickers = self.get_market_tickers(market, limit=30) # 병목 방지를 위해 limit 조정
+        tickers = self.get_market_tickers(market, limit=15) # 병목 방지를 위해 limit 조정
         recommendations = await self.screen_stocks(tickers, investor_style=style, top_n=limit)
         
         return {

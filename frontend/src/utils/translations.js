@@ -6,6 +6,8 @@ export const translations = {
         nav_calendar: "경제 캘린더",
         nav_portfolio: "포트폴리오",
         nav_screener: "종목 스크리너",
+        nav_earnings: "실적 캘린더",
+        nav_wallet: "내 지갑",
         nav_settings: "설정",
 
         // Global
@@ -138,6 +140,7 @@ export const translations = {
         analysis: "AI 분석",
         chat: "AI 비서",
         calendar: "경제 캘린더",
+        earnings: "실적 캘린더",
         portfolio: "포트폴리오",
         screener: "종목 스크리너",
         settings: "환경 설정",
@@ -174,6 +177,8 @@ export const translations = {
         nav_calendar: "Economic Calendar",
         nav_portfolio: "Portfolio",
         nav_screener: "Screener",
+        nav_earnings: "Earnings Calendar",
+        nav_wallet: "Real Wallet",
         nav_settings: "Settings",
 
         // Global
@@ -306,6 +311,7 @@ export const translations = {
         analysis: "AI Analysis",
         chat: "AI Assistant",
         calendar: "Economic Calendar",
+        earnings: "Earnings Calendar",
         portfolio: "Portfolio",
         screener: "Screener",
         settings: "Settings",

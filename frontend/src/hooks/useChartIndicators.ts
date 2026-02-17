@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import React from 'react';
 import { LineSeries, HistogramSeries, IChartApi, ISeriesApi, SeriesOptionsCommon, LineData, HistogramData, Time } from 'lightweight-charts';
 
 // Helper for time conversion (Consistent with StockChart.tsx)

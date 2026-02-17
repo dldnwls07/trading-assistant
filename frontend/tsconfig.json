@@ -17,21 +17,16 @@
         "noEmit": true,
         "jsx": "react-jsx",
         /* Linting */
-        "strict": false, // Enable incrementally
+        "strict": false,
         "noUnusedLocals": false,
         "noUnusedParameters": false,
         "noFallthroughCasesInSwitch": true,
         /* Migration Support */
         "allowJs": true,
-        "checkJs": false, // Don't check JS files for errors initially
+        "checkJs": false,
         "esModuleInterop": true
     },
     "include": [
-        "src"
-    ],
-    "references": [
-        {
-            "path": "./tsconfig.node.json"
-        }
+        "src/**/*"
     ]
 }

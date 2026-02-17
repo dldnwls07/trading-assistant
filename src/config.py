@@ -4,6 +4,16 @@ from typing import Dict, List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, validator
 
+# SSL 인증서 경로 설정 (yfinance curl_cffi 오류 해결)
+# TODO (에이전트): yfinance의 curl_cffi가 가상환경(.venv)의 잘못된 경로를 참조하는 문제 해결
+try:
+    import certifi
+    os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+    os.environ['SSL_CERT_FILE'] = certifi.where()
+    os.environ['CURL_CA_BUNDLE'] = certifi.where()
+except ImportError:
+    pass  # certifi가 없으면 시스템 기본값 사용
+
 # 기본 경로 설정
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -19,14 +29,14 @@ class Settings(BaseSettings):
     환경 변수 및 기본값 자동 로드 및 유효성 검사
     """
     # API Keys
-    HF_TOKEN: str = Field(default="", env="HF_TOKEN")
-    GEMINI_API_KEY: str = Field(default="", env="GEMINI_API_KEY")
-    GROQ_API_KEY: str = Field(default="", env="GROQ_API_KEY")
-    FRED_API_KEY: str = Field(default="", env="FRED_API_KEY")
-    TRADING_ECONOMICS_KEY: str = Field(default="", env="TRADING_ECONOMICS_KEY")
+    HF_TOKEN: str = Field(default="")
+    GEMINI_API_KEY: str = Field(default="")
+    GROQ_API_KEY: str = Field(default="")
+    FRED_API_KEY: str = Field(default="")
+    TRADING_ECONOMICS_KEY: str = Field(default="")
     
     # DB & Infrastructure
-    DB_PATH: str = Field(default="trading_assistant.db", env="DB_PATH")
+    DB_PATH: str = Field(default="trading_assistant.db")
     
     # Analysis Configuration
     DEFAULT_INTERVAL: str = "1d"

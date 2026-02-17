@@ -28,7 +28,16 @@ class KRXLoader:
             
             # 필요한 컬럼만 선택 및 정리
             if 'Code' in df_krx.columns and 'Name' in df_krx.columns:
-                self.df = df_krx[['Code', 'Name', 'Market', 'Sector', 'Industry']].copy()
+                available_cols = ['Code', 'Name', 'Market']
+                if 'Sector' in df_krx.columns: available_cols.append('Sector')
+                if 'Industry' in df_krx.columns: available_cols.append('Industry')
+                
+                self.df = df_krx[available_cols].copy()
+                
+                # 없는 컬럼은 빈 문자열로 채움
+                if 'Sector' not in self.df.columns: self.df['Sector'] = ''
+                if 'Industry' not in self.df.columns: self.df['Industry'] = ''
+                
                 self.df['Code'] = self.df['Code'].astype(str)
                 # 티커 변환 (숫자 -> .KS/.KQ)
                 self.df['Symbol'] = self.df.apply(self._convert_to_yfinance, axis=1)

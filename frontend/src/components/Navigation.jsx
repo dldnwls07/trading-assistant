@@ -1,16 +1,15 @@
 import { Link, useLocation } from 'react-router-dom';
-import {
-    BarChart2,
-    MessageSquare,
-    Calendar,
-    PieChart,
-    Search,
-    TrendingUp,
-    Settings,
-    Bell,
-    Menu,
-    X
-} from 'lucide-react';
+import BarChart2 from 'lucide-react/dist/esm/icons/bar-chart-2';
+import MessageSquare from 'lucide-react/dist/esm/icons/message-square';
+import Calendar from 'lucide-react/dist/esm/icons/calendar';
+import PieChart from 'lucide-react/dist/esm/icons/pie-chart';
+import Search from 'lucide-react/dist/esm/icons/search';
+import TrendingUp from 'lucide-react/dist/esm/icons/trending-up';
+import Settings from 'lucide-react/dist/esm/icons/settings';
+import Bell from 'lucide-react/dist/esm/icons/bell';
+import Wallet from 'lucide-react/dist/esm/icons/wallet';
+import Menu from 'lucide-react/dist/esm/icons/menu';
+import X from 'lucide-react/dist/esm/icons/circle-x';
 import { useState } from 'react';
 import { useTranslation } from '../utils/translations';
 
@@ -20,11 +19,13 @@ const Navigation = ({ settings, onOpenSettings }) => {
     const t = useTranslation(settings);
 
     const navItems = [
-        { path: '/', label: t.analysis, icon: BarChart2 },
-        // { path: '/chat', label: t.chat, icon: MessageSquare },
-        { path: '/calendar', label: t.calendar, icon: Calendar },
-        { path: '/portfolio', label: t.portfolio, icon: PieChart },
-        { path: '/screener', label: t.screener, icon: TrendingUp },
+        { path: '/', label: t.nav_analysis, icon: BarChart2 },
+        // { path: '/chat', label: t.nav_chat, icon: MessageSquare },
+        { path: '/calendar', label: t.nav_calendar, icon: Calendar },
+        { path: '/earnings', label: t.nav_earnings, icon: TrendingUp },
+        { path: '/portfolio', label: t.nav_portfolio, icon: PieChart },
+        { path: '/wallet', label: t.nav_wallet, icon: Wallet },
+        { path: '/screener', label: t.nav_screener, icon: Search },
     ];
 
     const isDark = settings?.darkMode;
@@ -39,10 +40,10 @@ const Navigation = ({ settings, onOpenSettings }) => {
                         <div className="flex-shrink-0 flex items-center">
                             <Link to="/" className="flex items-center gap-2">
                                 <div className="bg-blue-600 text-white p-1.5 rounded font-bold text-xl tracking-tighter shadow-lg shadow-blue-500/20">
-                                    QC
+                                    AI
                                 </div>
                                 <span className={`font-bold text-lg hidden sm:block ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                                    QuantCore<span className="text-blue-500">.Pro</span>
+                                    TRADING <span className="text-blue-500">ASSISTANT</span>
                                 </span>
                             </Link>
                         </div>

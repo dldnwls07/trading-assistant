@@ -211,12 +211,13 @@ class AdvancedIndicators:
         # 여기서는 Pandas 순회를 최소화하기 위해 numpy 배열 사용
         
         n = len(df)
-        sar_val = sar.values
-        trend_val = trend.values
-        ep_val = ep.values
-        af_val = af.values
-        high_val = high.values
-        low_val = low.values
+        # 중요: numpy array가 read-only일 수 있으므로 명시적으로 copy()
+        sar_val = sar.values.copy()
+        trend_val = trend.values.copy()
+        ep_val = ep.values.copy()
+        af_val = af.values.copy()
+        high_val = high.values.copy()
+        low_val = low.values.copy()
         
         curr_trend = trend_val[0]
         curr_sar = sar_val[0]
