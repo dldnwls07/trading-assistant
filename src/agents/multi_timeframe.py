@@ -42,15 +42,44 @@ class MultiTimeframeAnalyzer:
         self.ai_analyzer = ai_analyzer or AIAnalyzer()
         self.collector = collector or MarketDataCollector()
     
+    async def _fetch_vix(self) -> float:
+        """VIX(^VIX) 현재값을 수집합니다. 실패 시 기본값 18 반환."""
+        try:
+            vix_data = await self.collector.get_ohlcv("^VIX", period="5d", interval="1d")
+            if vix_data is not None and not vix_data.empty:
+                vix_value = float(vix_data['Close'].iloc[-1])
+                logger.info(f"📊 VIX 현재값: {vix_value:.2f}")
+                return vix_value
+        except Exception as e:
+            logger.warning(f"VIX 데이터 수집 실패 (기본값 18 사용): {e}")
+        return 18.0
+    
+    async def _fetch_index_data(self, index_ticker: str = "^IXIC") -> Optional[pd.DataFrame]:
+        """나스닥 등 인덱스 데이터를 수집합니다 (상관관계 분석용)."""
+        try:
+            index_data = await self.collector.get_ohlcv(index_ticker, period="6mo", interval="1d")
+            if index_data is not None and not index_data.empty:
+                return index_data
+        except Exception as e:
+            logger.warning(f"인덱스({index_ticker}) 데이터 수집 실패: {e}")
+        return None
+
     async def analyze_all_timeframes(self, ticker: str, index_ticker: str = "^GSPC", skip_report: bool = False) -> Dict[str, Any]:
         """모든 시간 프레임의 원본 지표를 수집하고, LLM에 분석을 요청합니다."""
         logger.info(f"🚀 {ticker} LLM-centric multi-timeframe analysis started...")
         
+        # VIX + 인덱스 + 타임프레임 분석을 모두 병렬로 실행
         tasks = [
             self._analyze_timeframe(ticker, tf_key, index_ticker) 
             for tf_key in ["short", "medium", "long"]
         ]
-        tf_results = await asyncio.gather(*tasks)
+        vix_task = self._fetch_vix()
+        index_task = self._fetch_index_data("^IXIC")
+        
+        results = await asyncio.gather(*tasks, vix_task, index_task)
+        tf_results = list(results[:3])
+        vix_value = results[3]
+        index_df = results[4]
         
         # Aggregate patterns and create the payload for the LLM
         all_patterns = []
@@ -63,18 +92,14 @@ class MultiTimeframeAnalyzer:
         # Extract chart image from medium timeframe result
         chart_image_bytes = tf_results[1].get("chart_image") if tf_results[1] else None
 
-        # analyze_ticker()는 {"daily_analysis": {"raw_indicators": {...}}, ...} 구조를 반환하므로
-        # full_analysis → daily_analysis → raw_indicators 경로로 접근해야 함
         def _extract_raw(tf_result) -> dict:
             """타임프레임 결과에서 raw_indicators를 안전하게 추출"""
             if not tf_result:
                 return {}
             full = tf_result.get("full_analysis", {})
-            # daily_analysis 하위에 raw_indicators가 있는 경우 (analyze_ticker 반환 구조)
             raw = full.get("daily_analysis", {}).get("raw_indicators")
             if raw:
                 return raw
-            # 혹시 직접 raw_indicators가 있는 경우 (구버전 호환)
             return full.get("raw_indicators") or {}
 
         llm_payload = {
@@ -83,6 +108,7 @@ class MultiTimeframeAnalyzer:
             "medium_term_indicators": _extract_raw(tf_results[1]),
             "long_term_indicators": _extract_raw(tf_results[2]),
             "all_patterns": all_patterns,
+            "vix": vix_value,
         }
         
         final_score = 50
@@ -91,7 +117,6 @@ class MultiTimeframeAnalyzer:
         
         if not skip_report:
             try:
-                # generate_report가 이제 Dict[str, Any]를 반환하며, 이미지도 받음
                 response_dict = self.ai_analyzer.generate_report(llm_payload, image_bytes=chart_image_bytes)
                 
                 final_score = int(response_dict.get("score", 50))
@@ -107,7 +132,6 @@ class MultiTimeframeAnalyzer:
             if tf_result and 'chart_image' in tf_result:
                 del tf_result['chart_image']
 
-        # ai_report가 딕셔너리로 잘못 저장된 경우 문자열로 변환 (React 렌더링 에러 방지)
         if isinstance(ai_report, dict):
             ai_report = ai_report.get("report", "AI 분석 리포트 생성 실패")
             logger.warning(f"ai_report was dict, extracted string: {ai_report[:100]}")
@@ -122,6 +146,8 @@ class MultiTimeframeAnalyzer:
             "medium_term": tf_results[1],
             "long_term": tf_results[2],
             "all_patterns": all_patterns,
+            "vix": vix_value,
+            "index_df_available": index_df is not None,
         }
 
     async def _analyze_timeframe(self, ticker: str, timeframe: str, index_ticker: str) -> Dict[str, Any]:
@@ -175,9 +201,10 @@ class MultiTimeframeAnalyzer:
             "holding_period": "N/A",
         }
     
-    def _generate_timeframe_strategy(self, timeframe: str, raw_ind: dict) -> Dict[str, str]:
+    def _generate_timeframe_strategy(self, timeframe: str, raw_ind: dict, vix: float = 18.0) -> Dict[str, str]:
         """
-        raw_indicators 기반으로 시간 프레임별 전략 요약을 규칙 기반으로 생성합니다.
+        raw_indicators + VIX 기반으로 시간 프레임별 전략 요약을 규칙 기반으로 생성합니다.
+        VIX가 높을 때는 RSI 임계값을 조절하여 가짜 신호를 필터링합니다.
         LLM 호출 없이 즉시 반환되므로 할당량에 영향 없음.
         """
         if not raw_ind:
@@ -197,14 +224,27 @@ class MultiTimeframeAnalyzer:
         bb_upper = raw_ind.get("bb_upper", 0)
         bb_lower = raw_ind.get("bb_lower", 0)
         
+        # --- VIX 적응형 RSI 임계값 ---
+        # VIX가 높으면(시장 공포) → RSI 매수 임계값을 낮추고, 매도 임계값을 높임
+        # 이유: 변동성 큰 장에서 일반 임계값은 가짜 신호를 양산함
+        if vix > 30:
+            rsi_buy_threshold = 25     # 극도의 공포
+            rsi_sell_threshold = 80
+        elif vix > 22:
+            rsi_buy_threshold = 30     # 공포 구간
+            rsi_sell_threshold = 75
+        else:
+            rsi_buy_threshold = 35     # 정상 구간
+            rsi_sell_threshold = 70
+        
         # --- 1. Recommendation (추천 전략) ---
         bullish_signals = 0
         bearish_signals = 0
         
         if rsi is not None:
-            if rsi < 30: bullish_signals += 2  # 과매도
+            if rsi < rsi_buy_threshold: bullish_signals += 2     # VIX 적응형 과매도
             elif rsi < 45: bullish_signals += 1
-            elif rsi > 70: bearish_signals += 2  # 과매수
+            elif rsi > rsi_sell_threshold: bearish_signals += 2  # VIX 적응형 과매수
             elif rsi > 55: bearish_signals += 1
                 
         if macd_hist is not None:
@@ -240,12 +280,26 @@ class MultiTimeframeAnalyzer:
         else:
             recommendation = f"🔴 {tf_label} 강한 매도 신호. 기술적 지표가 하락을 시사하며 포지션 축소 또는 손절을 고려하세요."
         
+        # VIX 경고 접미사
+        if vix > 30:
+            recommendation += f" ⚠️ VIX {vix:.1f} — 극단적 공포 구간! 포지션 사이즈를 절반 이하로 줄이세요."
+        elif vix > 22:
+            recommendation += f" ⚠️ VIX {vix:.1f} — 높은 변동성 주의. 보수적 진입 권장."
+        
         # --- 2. Focus Areas (주요 관찰 포인트) ---
         focus_parts = []
         
+        # VIX 상태 표시 (가장 먼저)
+        if vix > 30:
+            focus_parts.append(f"🔥 VIX {vix:.1f} 극단 공포")
+        elif vix > 22:
+            focus_parts.append(f"⚠️ VIX {vix:.1f} 경계")
+        else:
+            focus_parts.append(f"🟢 VIX {vix:.1f} 안정")
+        
         if rsi is not None:
-            if rsi > 70: focus_parts.append(f"RSI {rsi:.1f} 과매수 구간")
-            elif rsi < 30: focus_parts.append(f"RSI {rsi:.1f} 과매도 구간 (반등 주시)")
+            if rsi > rsi_sell_threshold: focus_parts.append(f"RSI {rsi:.1f} 과매수 (VIX 조정 임계: {rsi_sell_threshold})")
+            elif rsi < rsi_buy_threshold: focus_parts.append(f"RSI {rsi:.1f} 과매도 (VIX 조정 임계: {rsi_buy_threshold})")
             else: focus_parts.append(f"RSI {rsi:.1f} 중립")
         
         if close and sma_50 and sma_200:

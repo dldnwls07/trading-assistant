@@ -105,7 +105,7 @@ class AdvancedPatternDetector:
         return patterns
 
     def detect_all_patterns(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
-        """모든 패턴 감지 (우선순위 순)"""
+        """모든 패턴 감지 (우선순위 순) + 거래량 컨퍼메이션"""
         if len(df) < 60:
             return []
         
@@ -139,8 +139,44 @@ class AdvancedPatternDetector:
         patterns.extend(self._detect_harmonic_patterns(df, peaks, troughs))
         patterns.extend(self._detect_order_blocks(df))
         
+        # 6. 거래량 컨퍼메이션 (Volume Confirmation)
+        # 패턴이 완성되었더라도 거래량이 전일 대비 150% 미만이면 confidence 50% 감점
+        # 이유: 거래량 없는 돌파는 가짜 돌파(페이크아웃)일 확률이 높음
+        patterns = self._apply_volume_confirmation(df, patterns)
+        
         # 신뢰도 기준 정렬 (높은 순)
         patterns.sort(key=lambda x: x['reliability'], reverse=True)
+        
+        return patterns
+    
+    def _apply_volume_confirmation(self, df: pd.DataFrame, patterns: List[Dict]) -> List[Dict]:
+        """
+        거래량 컨퍼메이션: 패턴 완성 시점의 거래량이 전일 대비 150% 미만이면
+        confidence를 50% 감점합니다.
+        가짜 돌파(윗꼬리 후 하락)를 필터링하는 핵심 로직.
+        """
+        if len(df) < 2 or 'Volume' not in df.columns:
+            return patterns
+        
+        latest_vol = df['Volume'].iloc[-1]
+        prev_vol = df['Volume'].iloc[-2]
+        
+        # 직전 거래량이 0이면 감점 불가 (데이터 이슈)
+        if prev_vol <= 0:
+            return patterns
+        
+        vol_ratio = latest_vol / prev_vol
+        
+        for p in patterns:
+            if vol_ratio < 1.5:
+                # 거래량 미달 — confidence 50% 감점
+                original_confidence = p.get('confidence', 50)
+                p['confidence'] = max(10, int(original_confidence * 0.5))
+                p['volume_confirmed'] = False
+                p['desc'] += f" ⚠️ 거래량 미달 ({vol_ratio:.1f}x, 기준 1.5x). 가짜 돌파 주의."
+            else:
+                p['volume_confirmed'] = True
+                p['desc'] += f" ✅ 거래량 확인 ({vol_ratio:.1f}x)."
         
         return patterns
     
