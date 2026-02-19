@@ -146,13 +146,19 @@ class MultiTimeframeAnalyzer:
                 chart_img = generate_chart_image(stock_data, ticker, config["data_interval"])
             
             logger.info(f"Analyzing {ticker} for {timeframe}: Analysis complete.")
+            
+            # 시간 프레임별 전략 필드 생성 (프론트엔드 AnalysisInsights에서 참조)
+            raw_ind = analysis.get("daily_analysis", {}).get("raw_indicators", {})
+            strategy_fields = self._generate_timeframe_strategy(timeframe, raw_ind)
+            
             return {
                 "timeframe": timeframe,
                 "name": config["name"],
                 "current_price": float(stock_data['Close'].iloc[-1]),
                 "patterns": detected_patterns[:5],
                 "full_analysis": analysis,
-                "chart_image": chart_img
+                "chart_image": chart_img,
+                **strategy_fields,  # recommendation, focus_areas, holding_period 포함
             }
         except Exception as e:
             logger.error(f"❌ {ticker} {timeframe} error: {e}", exc_info=True)
@@ -163,5 +169,113 @@ class MultiTimeframeAnalyzer:
             "timeframe": timeframe,
             "name": self.timeframe_config[timeframe]["name"],
             "error": reason,
-            "full_analysis": {"error": reason}
+            "full_analysis": {"error": reason},
+            "recommendation": "데이터 부족으로 분석 불가",
+            "focus_areas": "데이터를 확인해주세요",
+            "holding_period": "N/A",
+        }
+    
+    def _generate_timeframe_strategy(self, timeframe: str, raw_ind: dict) -> Dict[str, str]:
+        """
+        raw_indicators 기반으로 시간 프레임별 전략 요약을 규칙 기반으로 생성합니다.
+        LLM 호출 없이 즉시 반환되므로 할당량에 영향 없음.
+        """
+        if not raw_ind:
+            return {
+                "recommendation": "지표 데이터 부족",
+                "focus_areas": "분석에 필요한 기술적 지표가 아직 계산되지 않았습니다.",
+                "holding_period": "N/A",
+            }
+        
+        rsi = raw_ind.get("rsi")
+        macd_hist = raw_ind.get("Hist") or raw_ind.get("macd_hist")
+        adx = raw_ind.get("adx")
+        close = raw_ind.get("Close", 0)
+        sma_50 = raw_ind.get("sma_50", 0)
+        sma_200 = raw_ind.get("sma_200", 0)
+        stoch_k = raw_ind.get("stoch_k")
+        bb_upper = raw_ind.get("bb_upper", 0)
+        bb_lower = raw_ind.get("bb_lower", 0)
+        
+        # --- 1. Recommendation (추천 전략) ---
+        bullish_signals = 0
+        bearish_signals = 0
+        
+        if rsi is not None:
+            if rsi < 30: bullish_signals += 2  # 과매도
+            elif rsi < 45: bullish_signals += 1
+            elif rsi > 70: bearish_signals += 2  # 과매수
+            elif rsi > 55: bearish_signals += 1
+                
+        if macd_hist is not None:
+            if macd_hist > 0: bullish_signals += 1
+            else: bearish_signals += 1
+                
+        if close and sma_50:
+            if close > sma_50: bullish_signals += 1
+            else: bearish_signals += 1
+                
+        if close and sma_200:
+            if close > sma_200: bullish_signals += 1
+            else: bearish_signals += 1
+
+        if adx is not None and adx > 25:
+            # 강한 추세 — 추세 방향대로 가중치 추가
+            if bullish_signals > bearish_signals: bullish_signals += 1
+            else: bearish_signals += 1
+
+        net = bullish_signals - bearish_signals
+        
+        # 시간 프레임별 맥락에 맞는 추천 생성
+        tf_label = {"short": "단기", "medium": "중기", "long": "장기"}.get(timeframe, timeframe)
+        
+        if net >= 4:
+            recommendation = f"🟢 {tf_label} 강한 매수 신호. 기술적 지표가 대부분 상승을 가리키고 있어 적극적인 진입을 고려할 수 있습니다."
+        elif net >= 2:
+            recommendation = f"🟢 {tf_label} 매수 우위. 분할 진입 또는 눌림목 대기 전략이 유효합니다."
+        elif net >= 0:
+            recommendation = f"🟡 {tf_label} 중립/관망. 명확한 방향성이 부족하므로 추세 확인 후 진입을 권장합니다."
+        elif net >= -2:
+            recommendation = f"🔴 {tf_label} 매도 우위. 리스크 관리를 강화하고 신규 진입은 보류하세요."
+        else:
+            recommendation = f"🔴 {tf_label} 강한 매도 신호. 기술적 지표가 하락을 시사하며 포지션 축소 또는 손절을 고려하세요."
+        
+        # --- 2. Focus Areas (주요 관찰 포인트) ---
+        focus_parts = []
+        
+        if rsi is not None:
+            if rsi > 70: focus_parts.append(f"RSI {rsi:.1f} 과매수 구간")
+            elif rsi < 30: focus_parts.append(f"RSI {rsi:.1f} 과매도 구간 (반등 주시)")
+            else: focus_parts.append(f"RSI {rsi:.1f} 중립")
+        
+        if close and sma_50 and sma_200:
+            if sma_50 > sma_200: focus_parts.append("골든크로스 유지 중")
+            elif sma_50 < sma_200: focus_parts.append("데드크로스 주의")
+            
+            if close > sma_50: focus_parts.append("SMA50 위 거래 (상승 지지)")
+            else: focus_parts.append("SMA50 하회 (약세)")
+        
+        if adx is not None:
+            if adx > 40: focus_parts.append(f"ADX {adx:.1f} 매우 강한 추세")
+            elif adx > 25: focus_parts.append(f"ADX {adx:.1f} 추세 확인")
+            else: focus_parts.append(f"ADX {adx:.1f} 추세 미약/횡보")
+        
+        if bb_upper and bb_lower and close:
+            if close > bb_upper: focus_parts.append("볼린저 상단 돌파 (과열)")
+            elif close < bb_lower: focus_parts.append("볼린저 하단 이탈 (과매도)")
+        
+        focus_areas = " | ".join(focus_parts) if focus_parts else "기술적 지표 데이터 확인 필요"
+        
+        # --- 3. Holding Period (추천 보유 기간) ---
+        holding_map = {
+            "short": "1~5 거래일 (스윙/데이 트레이딩)",
+            "medium": "2주~3개월 (포지션 트레이딩)",
+            "long": "3개월~1년 이상 (투자/자산배분)",
+        }
+        holding_period = holding_map.get(timeframe, "N/A")
+        
+        return {
+            "recommendation": recommendation,
+            "focus_areas": focus_areas,
+            "holding_period": holding_period,
         }

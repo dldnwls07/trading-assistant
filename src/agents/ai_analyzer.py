@@ -120,24 +120,35 @@ class AIAnalyzer:
         ticker = analysis_data.get("ticker", "UNKNOWN")
         logger.info(f"Generating AI report for {ticker} with Gemini (Image present: {bool(image_bytes)})")
         
+        lang_instruction = "Write the report in Korean (한국어)." if lang == "ko" else f"Write the report in {lang}."
         prompt = f"""
 You are a professional financial analyst. Analyze the provided stock data (and chart image if available) for {ticker}.
-Answer in {lang}.
-
-Focus on:
-1. Current Trend (Uptrend/Downtrend/Sideways) based on Moving Averages.
-2. Key Support/Resistance Levels.
-3. Momentum Indicators (RSI, MACD).
-4. Volume Analysis.
-5. Actionable Trading Strategy.
+{lang_instruction}
 
 Input Data:
 {json.dumps(analysis_data.get('medium_term_indicators', {}), indent=2)}
 
 Output Requirements:
-- Return ONLY valid JSON.
-- Keys: "score" (0-100), "signal" (STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL), "report" (string).
-- The "report" should be concise, professional, and directly address the user. Do NOT use markdown in the JSON string.
+- Return ONLY valid JSON with keys: "score" (0-100), "signal" (STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL), "report" (string).
+- The "report" MUST be structured with these sections, separated by newlines. Use the emoji headers exactly as shown:
+
+📊 Trend Analysis
+(Current trend direction based on Moving Averages. Is price above/below SMA50, SMA200? Golden/Death cross?)
+
+⚡ Momentum & Oscillators
+(RSI overbought/oversold? MACD crossover? Stochastic signal? ADX trend strength?)
+
+🎯 Key Levels
+(Support and resistance levels. Bollinger Band position. Notable price zones.)
+
+📈 Volume Analysis
+(Volume trend, OBV direction, buying/selling pressure.)
+
+💡 Strategy & Action
+(Specific actionable recommendation. Entry/exit zones. Risk management.)
+
+- Each section should be 1-2 sentences. Be concise and professional.
+- Do NOT use markdown formatting (no **, no ##). Use plain text with emoji headers.
 """
         try:
             # Gemini Vision API는 inlineData 형식으로 이미지를 받음
@@ -187,64 +198,82 @@ Output Requirements:
             return None
 
     def _generate_with_groq_simple(self, analysis_data: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
-        """Groq API (Llama-3)를 간소화된 프롬프트로 사용 - 공식 라이브러리 사용"""
-        logger.info("Attempting AI report generation with Groq (Simplified Prompt)...")
+        """Groq API (Llama-3) 폴백 — Llama는 한국어가 약하므로 영어로 생성"""
+        logger.info("Attempting AI report generation with Groq (English-only fallback)...")
         ticker = analysis_data.get("ticker", "UNKNOWN")
         
-        # Extract only the most critical indicators for a simpler prompt
+        # 중기 지표를 우선 사용하되, 단/장기 지표도 보조적으로 포함
         med_indicators = analysis_data.get("medium_term_indicators", {})
+        short_indicators = analysis_data.get("short_term_indicators", {})
+        long_indicators = analysis_data.get("long_term_indicators", {})
         
         if not med_indicators:
-            # 이 경우 데이터 파이프라인 문제 (raw_indicators 경로 불일치 등)일 가능성이 높음
+            # 데이터 파이프라인 문제 (raw_indicators 경로 불일치 등)일 가능성이 높음
             logger.warning(f"Groq 폴백 취소: {ticker}의 medium_term_indicators가 비어있음. analysis_data 키: {list(analysis_data.keys())}")
             return None
 
-        # Build a simple text-based summary of indicators
-        summary_lines = [f"Stock: {ticker}"]
-        key_indicators = {
-            "Price": med_indicators.get('Close'),
-            "RSI": med_indicators.get('rsi'),
-            "MACD Hist": med_indicators.get('Hist'),
-            "Stochastic %K": med_indicators.get('stoch_k'),
-            "ADX": med_indicators.get('adx'),
-            "Price vs SMA50": "Above" if med_indicators.get('Close', 0) > med_indicators.get('sma_50', 0) else "Below",
-            "Price vs SMA200": "Above" if med_indicators.get('Close', 0) > med_indicators.get('sma_200', 0) else "Below"
-        }
-        for name, value in key_indicators.items():
-            if value is not None:
-                summary_lines.append(f"- {name}: {value:.2f}" if isinstance(value, float) else f"- {name}: {value}")
+        # 다중 타임프레임 지표 요약 구성
+        summary_lines = [f"Stock: {ticker}", "", "=== Medium-Term (Daily) ==="]
+        self._append_indicators(summary_lines, med_indicators)
+        
+        if short_indicators:
+            summary_lines.append("\n=== Short-Term (Hourly) ===")
+            self._append_indicators(summary_lines, short_indicators)
+        
+        if long_indicators:
+            summary_lines.append("\n=== Long-Term (Weekly) ===")
+            self._append_indicators(summary_lines, long_indicators)
 
         prompt_text = "\n".join(summary_lines)
 
-        prompt = f"""You are an expert trading analyst. Analyze the following summary of technical indicators for {ticker}.
-Based on this data, provide a final 'score' from 0-100, a 'signal' ('STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL'), and a 'report' explaining your reasoning in {lang}.
+        # Llama 모델은 한국어 생성 능력이 약하므로 항상 영어로 생성
+        prompt = f"""You are an expert trading analyst. Analyze the following multi-timeframe technical indicators for {ticker}.
 
-You MUST reply with a single, valid JSON object with the keys "score", "signal", and "report".
+Provide a JSON object with keys "score" (0-100), "signal" (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL), and "report" (string).
 
-[Indicator Summary]
+The "report" MUST use this exact section format with emoji headers, separated by newlines:
+
+📊 Trend Analysis
+(Trend direction from Moving Averages. SMA50/200 position. Golden/Death cross status.)
+
+⚡ Momentum & Oscillators
+(RSI level and zone. MACD crossover status. Stochastic and ADX readings.)
+
+🎯 Key Levels
+(Support/resistance. Bollinger Band squeeze or breakout. Notable price zones.)
+
+💡 Strategy & Action
+(Specific trading recommendation. Entry/exit targets. Risk level.)
+
+Keep each section to 1-2 sentences. No markdown. Plain text only with emoji headers.
+Reply with ONLY valid JSON.
+
 {prompt_text}
 """
         try:
-            # 공식 Groq 라이브러리 사용
             from groq import Groq
             client = Groq(api_key=self.groq_key)
             
             response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
+                temperature=0.5,
                 response_format={"type": "json_object"}
             )
             
             content = response.choices[0].message.content.strip()
-            
-            # DEBUG: Log the raw content
             logger.info(f"Groq raw response: {content[:500]}")
             
-            # Parse JSON content from string to Dict
             try:
                 parsed_content = json.loads(content)
                 logger.info(f"✅ Groq parsed successfully: score={parsed_content.get('score')}, signal={parsed_content.get('signal')}")
+                
+                # 폴백 모델 사용 안내 + 원본 영어 리포트를 합쳐서 반환
+                original_report = parsed_content.get("report", "")
+                parsed_content["report"] = (
+                    "⚠️ [Gemini 할당량 초과로 Groq 폴백 모델 사용 — 영문 분석]\n\n"
+                    f"{original_report}"
+                )
                 return parsed_content
             except json.JSONDecodeError as jde:
                 logger.error(f"Groq returned invalid JSON: {content[:200]}")
@@ -252,8 +281,23 @@ You MUST reply with a single, valid JSON object with the keys "score", "signal",
                 return None
                 
         except Exception as e:
-            logger.error(f"Groq API (Simplified Prompt) failed: {e}", exc_info=True)
+            logger.error(f"Groq API fallback failed: {e}", exc_info=True)
             return None
+    
+    def _append_indicators(self, lines: list, indicators: dict) -> None:
+        """지표 딕셔너리에서 핵심 값들을 요약 라인에 추가하는 헬퍼"""
+        key_map = {
+            "Price": "Close", "RSI": "rsi", "MACD": "MACD",
+            "MACD Hist": "Hist", "Stoch %K": "stoch_k", "Stoch %D": "stoch_d",
+            "ADX": "adx", "ATR": "atr", "BB Upper": "bb_upper",
+            "BB Lower": "bb_lower", "SMA 20": "sma_20", "SMA 50": "sma_50",
+            "SMA 200": "sma_200", "EMA 12": "ema_12", "EMA 26": "ema_26",
+            "OBV": "obv", "Volume": "Volume",
+        }
+        for label, key in key_map.items():
+            value = indicators.get(key)
+            if value is not None:
+                lines.append(f"- {label}: {value:.4f}" if isinstance(value, float) else f"- {label}: {value}")
     
     # Old _generate_with_groq is no longer needed
     
