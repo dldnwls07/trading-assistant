@@ -195,6 +195,8 @@ Output Requirements:
         med_indicators = analysis_data.get("medium_term_indicators", {})
         
         if not med_indicators:
+            # 이 경우 데이터 파이프라인 문제 (raw_indicators 경로 불일치 등)일 가능성이 높음
+            logger.warning(f"Groq 폴백 취소: {ticker}의 medium_term_indicators가 비어있음. analysis_data 키: {list(analysis_data.keys())}")
             return None
 
         # Build a simple text-based summary of indicators

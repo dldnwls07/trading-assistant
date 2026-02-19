@@ -87,11 +87,9 @@ class IntegrationService:
                 "status": "success"
             }
             
-            # 4. 최종 종합 AI 리포트 생성 (모든 데이터 통합)
-            # generate_report는 {"score": int, "signal": str, "report": str} 딕셔너리를 반환
-            # full_report는 문자열이어야 하므로 "report" 키만 추출
-            ai_report_dict = self.ai_analyzer.generate_report(final_result)
-            final_result["full_report"] = ai_report_dict.get("report", "AI 분석 리포트 생성 실패")
+            # multi_timeframe.analyze_all_timeframes()에서 이미 AI 리포트 생성 완료
+            # (final_score, signal, full_report 포함)
+            # 여기서 generate_report를 다시 호출하면 이중 호출 + 데이터 구조 불일치로 실패함
             
             return final_result
 

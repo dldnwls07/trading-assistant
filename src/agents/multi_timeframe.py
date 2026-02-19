@@ -63,11 +63,25 @@ class MultiTimeframeAnalyzer:
         # Extract chart image from medium timeframe result
         chart_image_bytes = tf_results[1].get("chart_image") if tf_results[1] else None
 
+        # analyze_ticker()는 {"daily_analysis": {"raw_indicators": {...}}, ...} 구조를 반환하므로
+        # full_analysis → daily_analysis → raw_indicators 경로로 접근해야 함
+        def _extract_raw(tf_result) -> dict:
+            """타임프레임 결과에서 raw_indicators를 안전하게 추출"""
+            if not tf_result:
+                return {}
+            full = tf_result.get("full_analysis", {})
+            # daily_analysis 하위에 raw_indicators가 있는 경우 (analyze_ticker 반환 구조)
+            raw = full.get("daily_analysis", {}).get("raw_indicators")
+            if raw:
+                return raw
+            # 혹시 직접 raw_indicators가 있는 경우 (구버전 호환)
+            return full.get("raw_indicators") or {}
+
         llm_payload = {
             "ticker": ticker,
-            "short_term_indicators": tf_results[0].get("full_analysis", {}).get("raw_indicators"),
-            "medium_term_indicators": tf_results[1].get("full_analysis", {}).get("raw_indicators"),
-            "long_term_indicators": tf_results[2].get("full_analysis", {}).get("raw_indicators"),
+            "short_term_indicators": _extract_raw(tf_results[0]),
+            "medium_term_indicators": _extract_raw(tf_results[1]),
+            "long_term_indicators": _extract_raw(tf_results[2]),
             "all_patterns": all_patterns,
         }
         
