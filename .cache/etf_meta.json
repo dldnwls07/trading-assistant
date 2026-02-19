@@ -1,0 +1,17 @@
+{
+  "SOXL": {
+    "base": "SOXX",
+    "multiplier": 3.0,
+    "updated": "2026-02-19T23:26:43.057133"
+  },
+  "NVDL": {
+    "base": "NVDA",
+    "multiplier": 2.0,
+    "updated": "2026-02-19T23:26:43.397769"
+  },
+  "AAPL": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-19T23:26:43.739864"
+  }
+}

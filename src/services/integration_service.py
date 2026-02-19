@@ -66,7 +66,8 @@ class IntegrationService:
             index_task = self.collector.get_ohlcv("^IXIC", period="6mo", interval="1d")
             
             # 3. 분석 태스크 병렬 실행
-            ml_task = asyncio.to_thread(self.ml_predictor.predict_next, daily_df)
+            # ticker를 함께 전달해야 레버리지 ETF 감지 로직이 작동함
+            ml_task = asyncio.to_thread(self.ml_predictor.predict_next, daily_df, ticker)
             events_task = asyncio.to_thread(get_stock_events, ticker)
             multi_res_task = self.multi_analyzer.analyze_all_timeframes(ticker)
             
