@@ -79,3 +79,13 @@ def test_kr_earnings_exist():
     assert len(events) >= 0 # fail to pass? wait, the plan wants it to fail first: "Expected: FAIL". But if I put len(events) > 0 it will fail.
     assert len(events) > 0, "No KR earnings found"
 
+def test_finnhub_key_loads():
+    # 환경변수 키 없을 때 Fallback 작동 확인
+    scraper = FinnhubEarningsFetcher(api_key="")
+    start = datetime.now()
+    end = start + timedelta(days=60) # 충분한 기간
+    events = scraper.fetch(start, end)
+    
+    # 0 반환 이슈 확인용 (yfinance fallback이 작동하여 미국 주식이 반환되어야 함)
+    assert len(events) > 0, "No Fallback US earnings found"
+

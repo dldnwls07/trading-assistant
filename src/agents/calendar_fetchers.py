@@ -286,15 +286,16 @@ class NaverEarningsScraper(BaseFetcher):
         return e_events
 
 class FinnhubEarningsFetcher(BaseFetcher):
-    """Finnhub API 기반 미국 기업 실적 일정 수집"""
+    """Finnhub API 기반 미국 기업 실적 일정 수집 및 yfinance Fallback 지원"""
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.base_url = "https://finnhub.io/api/v1/calendar/earnings"
 
     def fetch(self, start: datetime, end: datetime, lang: str = "ko") -> List[Dict]:
         if not self.api_key: 
-            logger.warning("Finnhub API key missing. Skipping US earnings fetch.")
-            return []
+            logger.warning("Finnhub API key missing. Falling back to yfinance for US earnings.")
+            return self._fallback_yfinance_fetch(start, end)
+            
         events = []
         try:
             params = {
@@ -325,4 +326,50 @@ class FinnhubEarningsFetcher(BaseFetcher):
                 })
         except Exception as e:
             logger.error(f"Finnhub earnings fetch error: {e}")
+        return events
+
+    def _fallback_yfinance_fetch(self, start: datetime, end: datetime) -> List[Dict]:
+        """Finnhub 키가 없을 때 주요 미국 주식을 yfinance로 백업 수집"""
+        import yfinance as yf
+        import concurrent.futures
+        import pandas as pd
+        events = []
+        
+        # S&P 500 주요 시총 상위 티커 목록
+        top_us_tickers = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "BRK-B", "LLY", "AVGO", "V", "JPM", "WMT", "UNH", "MA", "PG", "JNJ", "HD", "MRK", "COST"]
+        
+        def fetch_single(ticker):
+            try:
+                stock = yf.Ticker(ticker)
+                cal = stock.calendar
+                if cal is not None and 'Earnings Date' in cal:
+                    e_dates = cal['Earnings Date']
+                    if not isinstance(e_dates, (list, tuple, pd.Index)):
+                        e_dates = [e_dates]
+                        
+                    for d in e_dates:
+                        if pd.notna(d):
+                            target_dt = datetime.combine(d.date(), datetime.min.time()) if hasattr(d, 'date') else datetime.combine(d, datetime.min.time())
+                            if start <= target_dt <= end:
+                                return {
+                                    "date": target_dt.strftime("%Y-%m-%d"),
+                                    "time": "장 시작 전/후",
+                                    "country": "US",
+                                    "type": "Earnings",
+                                    "ticker": ticker,
+                                    "title": f"[{ticker}] 실적 발표",
+                                    "importance": "high",
+                                    "category": "stock",
+                                    "source": "YF Fallback"
+                                }
+                            break  # 가장 가까운 일정 1개만 확인
+            except: pass
+            return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_ticker = {executor.submit(fetch_single, t): t for t in top_us_tickers}
+            for future in concurrent.futures.as_completed(future_to_ticker):
+                res = future.result()
+                if res: events.append(res)
+                
         return events

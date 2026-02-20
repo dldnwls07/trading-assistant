@@ -59,8 +59,8 @@ class EventCalendar:
         # Fetchers 초기화
         self.fred_fetcher = FredFetcher(settings.FRED_API_KEY)
         self.te_scraper = TradingEconomicsScraper()
-        # Finnhub API 키가 없는 경우를 대비한 처리 (현재 config에 없으므로 기본값 또는 .env 확인)
-        finnhub_key = os.getenv("FINNHUB_API_KEY", "")
+        # Finnhub API 키가 공백 없이 로딩되도록 strip() 처리 및 yfinance fallback 설정
+        finnhub_key = os.getenv("FINNHUB_API_KEY", "").strip()
         self.earnings_fetcher = FinnhubEarningsFetcher(finnhub_key)
         self.naver_earnings_fetcher = NaverEarningsScraper()
         
