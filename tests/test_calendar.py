@@ -51,3 +51,15 @@ def test_naver_single_earnings_error_logging(caplog):
         scraper._fetch_single_earnings({"symbol": "005930.KS", "code": "005930", "name": "삼성전자"}, start, end)
         
         assert "yfinance error mocked" in caplog.text
+
+def test_te_scraper_data_exist():
+    # Trading Economics에서 데이터가 정상적으로 들어오는지 확인
+    scraper = TradingEconomicsScraper()
+    # Check within next 7 days
+    start = datetime.now()
+    end = start + timedelta(days=7)
+    events = scraper.fetch(start, end)
+    
+    # 0 반환 이슈 확인용 (기존 봇 접근이 막혔으면 len(events)가 0 혹은 403)
+    assert len(events) > 0
+

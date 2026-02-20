@@ -79,7 +79,11 @@ class TradingEconomicsScraper(BaseFetcher):
     def __init__(self):
         self.base_url = "https://tradingeconomics.com/calendar"
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Referer": "https://tradingeconomics.com/",
+            "Upgrade-Insecure-Requests": "1"
         }
 
     def fetch(self, start: datetime, end: datetime, lang: str = "ko") -> List[Dict]:
@@ -96,41 +100,58 @@ class TradingEconomicsScraper(BaseFetcher):
             table = soup.find('table', id='calendar')
             if not table: return []
             
-            current_date = None
             for row in table.find_all('tr'):
-                # 날짜 헤더 처리
-                if 'table-header' in row.get('class', []):
-                    date_text = row.get_text(strip=True)
-                    try:
-                        current_date = datetime.strptime(date_text, "%A %B %d %Y")
-                    except: continue
+                # Data rows usually have data-id
+                if not row.has_attr('data-id'):
                     continue
                 
-                if current_date and (start <= current_date <= end):
-                    cols = row.find_all('td')
-                    if len(cols) < 5: continue
+                # Fetch date from the first td's class
+                time_td = row.find('td')
+                if not time_td: continue
+                
+                date_str = None
+                for cls in time_td.get('class', []):
+                    if len(cls) == 10 and cls.count('-') == 2:
+                        date_str = cls
+                        break
+                
+                if not date_str:
+                    continue
                     
-                    time = cols[0].get_text(strip=True)
-                    country = cols[1].get_text(strip=True)
-                    event_title = cols[2].get_text(strip=True)
-                    actual = cols[3].get_text(strip=True)
-                    forecast = cols[4].get_text(strip=True)
-                    previous = cols[5].get_text(strip=True) if len(cols) > 5 else "-"
+                try:
+                    event_date = datetime.strptime(date_str, "%Y-%m-%d")
+                except ValueError:
+                    continue
                     
-                    # 중요도 판별 (별 개수 등)
+                if start <= event_date <= end:
+                    time_span = time_td.find('span')
+                    time_val = time_span.get_text(strip=True) if time_span else ""
+                    
+                    country = row.get('data-country', '').title()
+                    event_title = row.get('data-event', '').title()
+                    
+                    actual_node = row.find('span', id='actual')
+                    actual = actual_node.get_text(strip=True) if actual_node else ""
+                    
+                    forecast_node = row.find('a', id='forecast') or row.find('span', id='forecast')
+                    forecast = forecast_node.get_text(strip=True) if forecast_node else ""
+                    
+                    previous_node = row.find('span', id='previous')
+                    previous = previous_node.get_text(strip=True) if previous_node else ""
+                    
+                    # Estimate importance (TE uses other methods for stars now)
                     importance = "medium"
-                    imp_cell = row.find('td', class_='calendar-importance')
-                    if imp_cell:
-                        stars = imp_cell.find_all('i', class_='fa-star')
-                        if len(stars) >= 3: importance = "critical"
-                        elif len(stars) == 2: importance = "high"
+                    if "gdp" in event_title.lower() or "cpi" in event_title.lower() or "interest rate" in event_title.lower() or "fed" in event_title.lower():
+                        importance = "critical"
+                    elif "pmi" in event_title.lower() or "employment" in event_title.lower():
+                        importance = "high"
                     
                     events.append({
-                        "date": current_date.strftime("%Y-%m-%d"),
-                        "time": time,
+                        "date": date_str,
+                        "time": time_val,
                         "country": country,
                         "type": "Indicator",
-                        "title": event_title, # TODO: 실시간 번역 연동 고려
+                        "title": event_title,
                         "importance": importance,
                         "actual": actual,
                         "forecast": forecast,
