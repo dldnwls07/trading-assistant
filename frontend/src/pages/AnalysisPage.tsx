@@ -226,7 +226,7 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ settings }) => {
             </div>
 
             {/* 1. Top Header & Search Bar - Optimized Hierarchy */}
-            <header className="max-w-[1600px] mx-auto mb-8 flex flex-col lg:flex-row gap-6 items-center justify-between relative z-10">
+            <header className="max-w-[1600px] mx-auto mb-8 flex flex-col lg:flex-row gap-6 items-center justify-between relative z-[100]">
                 <div className="flex items-center gap-6 w-full md:w-auto">
                     {/* Live Badge */}
                     <div className="px-4 py-2 rounded-full text-[10px] font-black flex items-center gap-2 animate-glow bg-secondary/10 text-secondary border border-secondary/30 tracking-[0.2em]">
