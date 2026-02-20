@@ -88,7 +88,9 @@ class TradingEconomicsScraper(BaseFetcher):
         events = []
         try:
             response = requests.get(self.base_url, headers=self.headers, timeout=10)
-            if response.status_code != 200: return []
+            if response.status_code != 200:
+                logger.error(f"TradingEconomics error: HTTP {response.status_code} ({response.text[:100]})")
+                return []
             
             soup = BeautifulSoup(response.text, 'html.parser')
             table = soup.find('table', id='calendar')
@@ -241,8 +243,8 @@ class NaverEarningsScraper(BaseFetcher):
                                     "source": "Naver/YF"
                                 })
                         except: continue
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Naver/YF single earnings fetch error for {ticker_info.get('code', 'unknown')}: {e}")
         return e_events
 
 class FinnhubEarningsFetcher(BaseFetcher):
@@ -263,6 +265,11 @@ class FinnhubEarningsFetcher(BaseFetcher):
                 "token": self.api_key
             }
             response = requests.get(self.base_url, params=params, timeout=10)
+            
+            if response.status_code != 200:
+                logger.error(f"Finnhub API error: HTTP {response.status_code} ({response.text[:100]})")
+                return []
+                
             data = response.json()
             
             for item in data.get("earningsCalendar", []):
