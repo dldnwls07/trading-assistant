@@ -202,8 +202,8 @@ class NaverEarningsScraper(BaseFetcher):
         """코스피 및 코스닥 시가총액 상위 종목 리스트 추출"""
         tickers = []
         urls = [
-            self.market_sum_url + "?sosok=0", # KOSPI
-            self.market_sum_url + "?sosok=1"  # KOSDAQ
+            "https://finance.naver.com/sise/sise_market_sum.naver?sosok=0", # KOSPI
+            "https://finance.naver.com/sise/sise_market_sum.naver?sosok=1"  # KOSDAQ
         ]
         
         try:
@@ -225,45 +225,62 @@ class NaverEarningsScraper(BaseFetcher):
                     
         except Exception as e:
             logger.warning(f"Failed to get top tickers from Naver: {e}")
+            
         return tickers
 
     def _fetch_single_earnings(self, ticker_info: Dict, start: datetime, end: datetime) -> List[Dict]:
-        """개별 종목의 실적 발표일 수집 (yfinance 활용)"""
+        """개별 종목의 실적 발표일 수집 (네이버 API 우선 확인 후 yfinance 폴백)"""
         import yfinance as yf
         e_events = []
         try:
+            code = ticker_info['code']
             symbol = ticker_info['symbol']
-            stock = yf.Ticker(symbol)
             
-            # yfinance calendar 데이터 확인
-            cal = stock.calendar
-            if cal and 'Earnings Date' in cal:
-                e_dates = cal['Earnings Date']
-                if not isinstance(e_dates, (list, tuple, pd.Index)):
-                    e_dates = [e_dates]
-                
-                for d in e_dates:
-                    if pd.notna(d):
-                        try:
-                            # d가 date 객체일 수도 있고 datetime 객체일 수도 있음
+            # 1차 시도: 네이버 금융 API (irScheduleInfo) 우선 확인
+            integration_url = f"https://m.stock.naver.com/api/stock/{code}/integration"
+            ir_target_dt = None
+            try:
+                res = requests.get(integration_url, headers=self.headers, timeout=3)
+                if res.status_code == 200:
+                    info = res.json()
+                    ir_info = info.get("irScheduleInfo")
+                    if ir_info and ir_info.get("date"):
+                        # '2026-02-26' 등의 형식을 파싱
+                        ir_date_str = ir_info.get("date")
+                        ir_target_dt = datetime.strptime(ir_date_str, "%Y-%m-%d")
+            except Exception as e:
+                logger.debug(f"Naver IR API error for {code}: {e}")
+            
+            # 2차 시도 (Fallback): yfinance 활용
+            if ir_target_dt is None:
+                stock = yf.Ticker(symbol)
+                cal = stock.calendar
+                print(f"YF cal for {symbol}: {cal}")
+                if cal is not None and 'Earnings Date' in cal:
+                    e_dates = cal['Earnings Date']
+                    if not isinstance(e_dates, (list, tuple, pd.Index)):
+                        e_dates = [e_dates]
+                    
+                    for d in e_dates:
+                        if pd.notna(d):
                             if hasattr(d, 'date'):
-                                target_dt = datetime.combine(d.date(), datetime.min.time())
+                                ir_target_dt = datetime.combine(d.date(), datetime.min.time())
                             else:
-                                target_dt = datetime.combine(d, datetime.min.time())
-                            
-                            if start <= target_dt <= end:
-                                e_events.append({
-                                    "date": target_dt.strftime("%Y-%m-%d"),
-                                    "time": "장 시작 전/후",
-                                    "country": "KR",
-                                    "type": "Earnings",
-                                    "ticker": ticker_info['code'],
-                                    "title": f"[{ticker_info['code']}] {ticker_info['name']} 실적 발표",
-                                    "importance": "high",
-                                    "category": "stock",
-                                    "source": "Naver/YF"
-                                })
-                        except: continue
+                                ir_target_dt = datetime.combine(d, datetime.min.time())
+                            break  # 가장 가까운 하나만 사용
+
+            if ir_target_dt and (start <= ir_target_dt <= end):
+                e_events.append({
+                    "date": ir_target_dt.strftime("%Y-%m-%d"),
+                    "time": "장 시작 전/후",
+                    "country": "KR",
+                    "type": "Earnings",
+                    "ticker": code,
+                    "title": f"[{code}] {ticker_info['name']} 실적 발표",
+                    "importance": "high",
+                    "category": "stock",
+                    "source": "Naver/YF"
+                })
         except Exception as e:
             logger.error(f"Naver/YF single earnings fetch error for {ticker_info.get('code', 'unknown')}: {e}")
         return e_events
