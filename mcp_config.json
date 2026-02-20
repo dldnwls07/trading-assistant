@@ -9,6 +9,12 @@
                 "PYTHONPATH": "c:\\Users\\feca1\\OneDrive\\바탕 화면\\Trading_asist"
             },
             "description": "Antigravity AI Trading Assistant - Stock Price, Analysis, Portfolio Tools"
+        },
+        "stitch": {
+            "serverUrl": "https://stitch.googleapis.com/mcp",
+            "headers": {
+                "X-Goog-Api-Key": "AQ.Ab8RN6KkmVcS2DA7F0SLNo7x12ElQYhhWlbpg0sBFVxeaOGRzQ"
+            }
         }
     }
 }

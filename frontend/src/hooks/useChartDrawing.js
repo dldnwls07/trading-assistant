@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { LineSeries } from 'lightweight-charts';
 
 export const useChartDrawing = (chart, mainSeriesRef, activeTool, setActiveTool) => {

@@ -59,65 +59,45 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Always Dark Theme */
+    --background: #09090b;
+    /* Zinc-950 */
+    --foreground: #f8fafc;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: #09090b;
+    --card-foreground: #f8fafc;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: #09090b;
+    --popover-foreground: #f8fafc;
 
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
+    --primary: #f8fafc;
+    --primary-foreground: #09090b;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: #FACC15;
+    /* Yellow-400 */
+    --secondary-foreground: #09090b;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: #1e1e2e;
+    --muted-foreground: #94a3b8;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: #FACC15;
+    --accent-foreground: #09090b;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --border: #27272a;
+    /* Zinc-800 */
+    --input: #27272a;
+    --ring: #FACC15;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
   }
 
+  /* Support legacy .dark class if needed for tailwind but :root is already dark now */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --background: #09090b;
+    --foreground: #f8fafc;
   }
 }
 
@@ -130,6 +110,25 @@
     @apply bg-background text-foreground;
     font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 접근성(A11y) 중심의 글로벌 포커스 인디케이터 복원 및 강화 */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-yellow-400 ring-offset-2 ring-offset-background;
+    transition: outline 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+  }
+
+  /* GPU 가속을 활용하여 성능 저하 없는 트랜지션 적용 */
+  .transition-all,
+  .transition,
+  .transition-transform,
+  .transition-colors,
+  .transition-opacity {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+    /* 강제 하드웨어 가속 */
   }
 
   /* 하이테크 터미널 폰트 */
@@ -149,39 +148,61 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/20 rounded-full transition-colors;
+    @apply bg-white/10 rounded-full transition-colors;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/40;
+    @apply bg-white/20;
   }
 }
 
-/* Glassmorphism 효과 */
+/* Glassmorphism 효과 표준화 (Stitch 규격) */
 .glass {
-  background: rgba(var(--background), 0.7);
+  background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(var(--border), 0.5);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.glass-blue {
-  background: rgba(var(--primary), 0.05);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(var(--primary), 0.2);
+.glass-zinc {
+  background: rgba(24, 24, 27, 0.4);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* 텍스처 오버레이 및 고급 미학 */
+.bg-noise {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.01;
+  /* Much subtler noise */
+}
+
+.dark .bg-noise {
+  opacity: 0.012;
+}
+
+.mesh-gradient {
+  background: radial-gradient(at 0% 0%, rgba(250, 204, 21, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(39, 39, 42, 0.05) 0px, transparent 50%);
 }
 
 /* 하이라이트 애니메이션 */
 @keyframes pulse-glow {
   0% {
-    box-shadow: 0 0 0 0 rgba(var(--primary), 0.4);
+    box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.2);
   }
 
   70% {
-    box-shadow: 0 0 0 10px rgba(var(--primary), 0);
+    box-shadow: 0 0 0 10px rgba(250, 204, 21, 0);
   }
 
   100% {
-    box-shadow: 0 0 0 0 rgba(var(--primary), 0);
+    box-shadow: 0 0 0 0 rgba(250, 204, 21, 0);
   }
 }
 
@@ -191,9 +212,10 @@
 
 /* 차트 툴팁 스타일 커스텀 */
 .lightweight-charts-tooltip {
-  background: hsl(var(--card)) !important;
-  color: hsl(var(--foreground)) !important;
-  border: 1px solid hsl(var(--border)) !important;
-  border-radius: var(--radius) !important;
+  background: rgba(9, 9, 11, 0.9) !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 0.75rem !important;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(8px);
 }

@@ -249,6 +249,48 @@ class MarketDataCollector:
             logger.warning(f"Realtime patch failed: {e}")
         return df
 
+    def search_symbols(self, query: str, limit: int = 10) -> List[Dict[str, str]]:
+        """
+        Search for symbols using yfinance.
+        This is a basic implementation and might not be the most reliable.
+        """
+        try:
+            # yfinance doesn't have a direct search API.
+            # A common workaround is to use a web search or a dedicated service.
+            # For this app, we'll use a hacky way by fetching from a non-official API
+            # that scrapes yahoo finance.
+            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            
+            results = []
+            for item in data.get('quotes', []):
+                if item.get('symbol') and item.get('longname'):
+                    results.append({
+                        "symbol": item['symbol'],
+                        "name": item['longname'],
+                        "typeDisp": item.get('typeDisp', 'N/A'),
+                    })
+            return results[:limit]
+        except Exception as e:
+            logger.error(f"Symbol search failed for '{query}': {e}")
+            return []
+
+    def get_financials(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Get financial data for a given ticker.
+        """
+        try:
+            stock = yf.Ticker(ticker)
+            # .info can be slow as it fetches a lot of data
+            financials = stock.info
+            return financials
+        except Exception as e:
+            logger.error(f"Failed to get financials for {ticker}: {e}")
+            return None
+
     async def get_realtime_data(self, ticker: str) -> Dict[str, Any]:
         """실시간 시세 데이터 (Naver/Yahoo)"""
         clean_ticker = ticker.replace('.KS', '').replace('.KQ', '')

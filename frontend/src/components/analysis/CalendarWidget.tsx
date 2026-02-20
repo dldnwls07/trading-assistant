@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Clock, Globe, AlertCircle } from 'lucide-react';
+import { CalendarDays, Globe, Info } from 'lucide-react';
 import { AnalysisResult } from '../../types/api';
 
 interface CalendarWidgetProps {
@@ -9,75 +9,59 @@ interface CalendarWidgetProps {
 }
 
 const CalendarWidget: React.FC<CalendarWidgetProps> = ({ analysis, isDark }) => {
-    // events from analysis might contain earnings_date, dividends, or other stock-specific info
-    const stockEvents = analysis?.events || {};
-
-    // Check if there's actual data to display
-    const hasData = Object.keys(stockEvents).length > 0;
-
     return (
-        <div className={`rounded-3xl p-8 border shadow-xl transition-all duration-300 ${isDark ? 'bg-[#0f172a] border-slate-800' : 'bg-white border-gray-100'}`}>
+        <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="p-6 rounded-xl border bg-white/5 backdrop-blur-md border-white/10 shadow-xl relative overflow-hidden group"
+        >
             <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">
-                    <div className="bg-purple-600/10 p-2.5 rounded-2xl">
-                        <Calendar className="w-6 h-6 text-purple-500" />
+                    <div className="bg-white/5 p-2 rounded-lg border border-white/10">
+                        <CalendarDays className="w-5 h-5 text-zinc-500" />
                     </div>
-                    <div>
-                        <h3 className="text-xl font-black">📅 Market Context</h3>
-                        <p className="text-[10px] opacity-50 font-black uppercase tracking-widest">Event Sync Engine</p>
-                    </div>
+                    <h3 className="text-sm font-bold tracking-widest uppercase font-mono text-zinc-100">MARKET_CONTEXT</h3>
                 </div>
-                {hasData && (
-                    <div className="px-2 py-1 rounded bg-purple-500/10 text-purple-500 text-[10px] font-black animate-pulse">
-                        LIVE
-                    </div>
-                )}
+                <div className="text-[9px] font-bold text-zinc-700 uppercase tracking-widest font-mono">LIVE_FEED</div>
             </div>
 
-            <div className="space-y-4">
-                {hasData ? (
-                    <>
-                        {/* Earnings */}
-                        <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-gray-50 border-gray-100'} flex items-center justify-between`}>
-                            <div className="flex items-center gap-3">
-                                <Clock className="w-4 h-4 text-slate-500" />
-                                <span className="text-xs font-bold opacity-60">Earnings Date</span>
-                            </div>
-                            <span className="text-xs font-black">{stockEvents.earnings_date || 'N/A'}</span>
-                        </div>
+            <div className="space-y-6 relative">
+                {/* Vertical Timeline Line */}
+                <div className="absolute left-1.5 top-2 bottom-2 w-px bg-white/5"></div>
 
-                        {/* Sector */}
-                        <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-gray-50 border-gray-100'} flex items-center justify-between`}>
-                            <div className="flex items-center gap-3">
-                                <Globe className="w-4 h-4 text-slate-500" />
-                                <span className="text-xs font-bold opacity-60">Market Sector</span>
-                            </div>
-                            <span className="text-xs font-black">{stockEvents.sector || 'N/A'}</span>
-                        </div>
+                {/* Earnings Context */}
+                <div className="relative pl-7 group/item">
+                    <div className="absolute left-1 top-1.5 w-1.5 h-1.5 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.5)] z-10 transition-transform group-hover/item:scale-125"></div>
+                    <p className="text-[8px] font-bold text-yellow-400/50 uppercase tracking-widest mb-1 font-mono">EARNINGS</p>
+                    <p className="text-xs font-bold tracking-tight mb-1 uppercase font-mono text-zinc-200">
+                        {analysis?.events?.earnings || "AWAITING_SCHEDULE"}
+                    </p>
+                    <p className="text-[10px] font-medium text-zinc-500 leading-relaxed font-mono">
+                        Quarterly volatility mapping for {analysis?.ticker || "ASSET"}.
+                    </p>
+                </div>
 
-                        {/* Risk / Volatility (Mock for now or extract from events) */}
-                        <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-gray-50 border-gray-100'} flex items-center justify-between`}>
-                            <div className="flex items-center gap-3">
-                                <AlertCircle className="w-4 h-4 text-slate-500" />
-                                <span className="text-xs font-bold opacity-60">Impending Risk</span>
-                            </div>
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>LOW VOLATILITY</span>
-                        </div>
-                    </>
-                ) : (
-                    <div className="py-10 text-center space-y-3 opacity-30">
-                        <Clock size={32} className="mx-auto" />
-                        <p className="text-xs font-bold italic uppercase tracking-widest">No scheduled events for this asset</p>
-                    </div>
-                )}
+                {/* Sector Context */}
+                <div className="relative pl-7 group/item">
+                    <div className="absolute left-1 top-1.5 w-1.5 h-1.5 rounded-full bg-white/20 z-10 transition-transform group-hover/item:scale-125"></div>
+                    <p className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest mb-1 font-mono">SECTOR_FLOW</p>
+                    <p className="text-xs font-bold tracking-tight mb-1 uppercase font-mono text-zinc-400">
+                        {analysis?.events?.sector || "MAPPING_CORRELATIONS..."}
+                    </p>
+                    <p className="text-[10px] font-medium text-zinc-600 leading-relaxed font-mono">
+                        Sector-alpha harmonics and flow matrix updates.
+                    </p>
+                </div>
             </div>
 
-            <div className="mt-8 pt-6 border-t border-slate-800/50">
-                <p className="text-[10px] font-medium opacity-40 leading-relaxed italic">
-                    AI-driven context extraction from global news streams and official financial filings.
-                </p>
+            <div className="mt-8 pt-5 border-t border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Info size={10} className="text-zinc-700" />
+                    <span className="text-[8px] font-bold text-zinc-800 uppercase tracking-widest font-mono">STITCH_V1.7_CORE</span>
+                </div>
+                <div className="w-1.5 h-1.5 rounded-full animate-pulse bg-emerald-500/20"></div>
             </div>
-        </div>
+        </motion.div>
     );
 };
 

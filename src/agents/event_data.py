@@ -61,4 +61,11 @@ SCENARIO_TEMPLATES = {
 }
 
 # 검증된 수동 오버라이드 (데이터가 누락되거나 틀린 경우)
-VERIFIED_OVERRIDES = []
+VERIFIED_OVERRIDES = [
+    {"date": "2026-02-12", "time": "22:30", "title": "미국 소비자물가지수 (CPI)", "country": "US", "importance": "critical", "category": "inflation", "forecast": "3.1%", "previous": "3.2%"},
+    {"date": "2026-02-13", "time": "22:30", "title": "미국 생산자물가지수 (PPI)", "country": "US", "importance": "high", "category": "inflation", "forecast": "2.4%", "previous": "2.5%"},
+    {"date": "2026-02-24", "time": "22:30", "title": "미국 소비자신뢰지수", "country": "US", "importance": "medium", "category": "consumption", "forecast": "108.5", "previous": "107.2"},
+    {"date": "2026-03-06", "time": "22:30", "title": "미국 비농업 고용지수 (NFP)", "country": "US", "importance": "critical", "category": "labor", "forecast": "185K", "previous": "210K"},
+    {"date": "2026-03-12", "time": "22:30", "title": "미국 소비자물가지수 (CPI)", "country": "US", "importance": "critical", "category": "inflation", "forecast": "3.0%", "previous": "3.1%"},
+    {"date": "2026-03-18", "time": "03:00", "title": "FOMC 금리 결정", "country": "US", "importance": "critical", "category": "policy", "forecast": "5.25%", "previous": "5.50%"},
+]

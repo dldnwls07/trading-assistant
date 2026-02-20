@@ -3218,7 +3218,7 @@ function normalizeRedirectLocation(location, currentUrl, basename, historyInstan
     "devtools:",
     "file:",
     "filesystem:",
-    // eslint-disable-next-line no-script-url
+     
     "javascript:"
   ];
   if (ABSOLUTE_URL_REGEX.test(location)) {
@@ -3934,7 +3934,7 @@ function useNavigateUnstable() {
     if (dataRouterContext == null && basename !== "/") {
       path.pathname = path.pathname === "/" ? basename : joinPaths([basename, path.pathname]);
     }
-    (!!options.replace ? navigator.replace : navigator.push)(path, options.state, options);
+    (options.replace ? navigator.replace : navigator.push)(path, options.state, options);
   }, [basename, navigator, routePathnamesJson, locationPathname, dataRouterContext]);
   return navigate;
 }
@@ -4548,7 +4548,7 @@ function Router(_ref5) {
     static: staticProp = false,
     future
   } = _ref5;
-  !!useInRouterContext() ? true ? invariant(false, "You cannot render a <Router> inside another <Router>. You should never have more than one in your app.") : invariant(false) : void 0;
+  useInRouterContext() ? true ? invariant(false, "You cannot render a <Router> inside another <Router>. You should never have more than one in your app.") : invariant(false) : void 0;
   let basename = basenameProp.replace(/^\/*/, "/");
   let navigationContext = React.useMemo(() => ({
     basename,

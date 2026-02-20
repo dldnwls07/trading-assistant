@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from src.api.server import app
 import pytest
 import logging
+from unittest import mock
 
 # Filter warnings
 import warnings
@@ -16,18 +17,16 @@ def test_api_root():
     assert response.status_code == 200
     print("✅ Server Root (Docs) is accessible.")
 
-def test_analyze_endpoint(mocker):
+@mock.patch("src.api.server.run_analysis")
+def test_analyze_endpoint(mock_run_analysis):
     """Test basic analysis endpoint"""
     # Mock the underlying analysis function to prevent real API calls
-    mocker.patch(
-        "src.api.server.run_analysis",
-        return_value={
-            "ticker": "005930.KS",
-            "final_score": 75.5,
-            "signal": "BUY",
-            "full_report": "This is a mocked analysis report."
-        }
-    )
+    mock_run_analysis.return_value = {
+        "ticker": "005930.KS",
+        "final_score": 75.5,
+        "signal": "BUY",
+        "full_report": "This is a mocked analysis report."
+    }
 
     ticker = "005930.KS" # Samsung Electronics
     print(f"📡 Testing /analyze/{ticker}...")

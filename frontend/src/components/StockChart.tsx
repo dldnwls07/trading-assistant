@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
 import { createChart, CandlestickSeries, IChartApi, ISeriesApi, ColorType, CrosshairMode } from 'lightweight-charts';
 import { Maximize2, Minimize2, Settings, X, Activity } from 'lucide-react';
 import DrawingToolbar from './chart/DrawingToolbar';
@@ -14,10 +13,10 @@ interface ToggleProps {
 }
 
 const Toggle: React.FC<ToggleProps> = ({ label, value, onToggle }) => (
-    <div onClick={onToggle} className="flex items-center justify-between p-2.5 hover:bg-slate-700/50 rounded-lg cursor-pointer transition-colors group">
-        <span className="text-xs text-slate-400 group-hover:text-slate-200 font-medium transition-colors">{label}</span>
-        <div className={`w-9 h-5 rounded-full transition-colors ${value ? 'bg-blue-600' : 'bg-slate-700'} relative`}>
-            <div className={`w-3.5 h-3.5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${value ? 'left-4.5' : 'left-0.5'}`} />
+    <div onClick={onToggle} className="flex items-center justify-between p-3.5 hover:bg-white/[0.03] rounded-xl cursor-pointer transition-[background-color] duration-200 group border border-transparent hover:border-white/5">
+        <span className="text-[11px] text-muted-foreground group-hover:text-foreground font-black uppercase tracking-widest transition-colors font-mono">{label}</span>
+        <div className={`w-10 h-5.5 rounded-full transition-[background-color] duration-300 ${value ? 'bg-yellow-400 shadow-[0_0_10px_#FACC1550]' : 'bg-white/10'} relative border border-white/5`}>
+            <div className={`w-3.5 h-3.5 bg-white rounded-full absolute top-0.5 transition-[left,box-shadow] duration-300 shadow-xl ${value ? 'left-5.5' : 'left-0.5'}`} />
         </div>
     </div>
 );
@@ -74,20 +73,21 @@ export const StockChart: React.FC<StockChartProps> = ({ data, interval, options 
 
         const chart = createChart(chartContainerRef.current, {
             layout: {
-                background: { type: ColorType.Solid, color: isDark ? '#0f172a' : '#ffffff' },
+                background: { type: ColorType.Solid, color: isDark ? '#09090b' : '#ffffff' },
                 textColor: isDark ? '#94a3b8' : '#334155',
+                fontFamily: 'JetBrains Mono, monospace',
             },
             grid: {
-                vertLines: { color: isDark ? '#1e293b' : '#e2e8f0' },
-                horzLines: { color: isDark ? '#1e293b' : '#e2e8f0' },
+                vertLines: { color: isDark ? '#111111' : '#f0f0f0' },
+                horzLines: { color: isDark ? '#111111' : '#f0f0f0' },
             },
             crosshair: {
                 mode: CrosshairMode.Normal,
-                vertLine: { labelBackgroundColor: '#3b82f6' },
-                horzLine: { labelBackgroundColor: '#3b82f6' },
+                vertLine: { labelBackgroundColor: '#FACC15', color: '#FACC15', style: 2, labelVisible: true },
+                horzLine: { labelBackgroundColor: '#FACC15', color: '#FACC15', style: 2, labelVisible: true },
             },
-            timeScale: { borderColor: isDark ? '#334155' : '#cbd5e1' },
-            rightPriceScale: { borderColor: isDark ? '#334155' : '#cbd5e1' },
+            timeScale: { borderColor: isDark ? '#111111' : '#e2e8f0', barSpacing: 10 },
+            rightPriceScale: { borderColor: isDark ? '#111111' : '#e2e8f0' },
             autoSize: true,
         });
 
@@ -204,12 +204,12 @@ export const StockChart: React.FC<StockChartProps> = ({ data, interval, options 
             <div ref={chartContainerRef} className="w-full flex-1 relative overflow-hidden" />
 
             {/* 2. Top Toolbar (Controls) */}
-            <div className="absolute top-3 right-3 z-[50] flex items-center gap-2">
-                <button onClick={() => setShowSettings(!showSettings)} className="p-2 bg-card/80 hover:bg-muted backdrop-blur-md rounded-lg border border-border transition-all shadow-sm group">
-                    {showSettings ? <X size={18} className="text-muted-foreground group-hover:text-foreground" /> : <Settings size={18} className="text-muted-foreground group-hover:text-foreground" />}
+            <div className="absolute top-4 right-4 z-[50] flex items-center gap-3">
+                <button onClick={() => setShowSettings(!showSettings)} className={`p-3 bg-white/5 backdrop-blur-md hover:bg-white/10 rounded-xl border border-white/5 transition-[background-color,transform,box-shadow] duration-200 shadow-2xl group active:scale-90 ${showSettings ? 'border-yellow-400/40 bg-yellow-400/10' : ''}`}>
+                    <Settings size={20} className={`transition-colors duration-200 ${showSettings ? 'text-yellow-400' : 'text-zinc-500 group-hover:text-zinc-100'}`} />
                 </button>
-                <button onClick={toggleFullscreen} className={`px-3 py-2 bg-primary hover:bg-primary/90 rounded-lg transition-all shadow-sm flex items-center gap-2 text-primary-foreground font-bold text-xs ${isFullscreen ? 'ring-2 ring-ring ring-offset-2 ring-offset-background' : ''}`}>
-                    {isFullscreen ? <><Minimize2 size={16} /> EXIT</> : <Maximize2 size={16} />}
+                <button onClick={toggleFullscreen} className={`px-5 py-3 bg-yellow-400 hover:bg-yellow-400/90 rounded-xl transition-[background-color,transform,box-shadow] duration-200 active:scale-95 shadow-[0_10px_20px_-5px_#FACC1540] flex items-center gap-3 text-black font-black text-[10px] tracking-widest uppercase`}>
+                    {isFullscreen ? <><Minimize2 size={16} /> EXIT_FS</> : <><Maximize2 size={16} /> FULLSCAN</>}
                 </button>
             </div>
 
@@ -229,20 +229,19 @@ export const StockChart: React.FC<StockChartProps> = ({ data, interval, options 
 
             {/* 4. Settings Panel (Overlay) */}
             {showSettings && (
-                <div className="absolute top-14 right-3 z-[60] bg-card/95 backdrop-blur-xl border border-border rounded-xl p-5 shadow-2xl w-80 max-h-[calc(100%-80px)] overflow-y-auto custom-scrollbar animate-in slide-in-from-top-2 fade-in duration-200">
-                    <h4 className="text-foreground font-black mb-5 text-sm flex items-center gap-2 uppercase tracking-wide">
-                        <Settings size={14} className="text-primary" />
-                        Intelligence Layer
+                <div className="absolute top-20 right-4 z-[60] bg-[#09090b]/90 backdrop-blur-3xl border border-white/10 rounded-[2rem] p-8 shadow-[0_40px_80px_-20px_rgba(0,0,0,0.8)] w-96 max-h-[calc(100%-100px)] overflow-y-auto custom-scrollbar animate-in slide-in-from-top-4 fade-in duration-300">
+                    <h4 className="text-zinc-100 font-black mb-8 text-base flex items-center gap-4 uppercase tracking-tighter font-mono">
+                        <div className="w-1.5 h-6 bg-yellow-400 rounded-full shadow-[0_0_10px_#FACC15]"></div>
+                        INTELLIG_LAYER_CTRL
                     </h4>
 
-                    <div className="space-y-6">
+                    <div className="space-y-10">
                         {/* 1. Trend */}
                         <div>
-                            <h5 className="text-primary text-[10px] mb-3 font-black uppercase tracking-widest flex items-center gap-2">
-                                <div className="w-1 h-3 bg-primary rounded-full"></div>
-                                Trend Analysis
+                            <h5 className="text-yellow-400/60 text-[10px] mb-4 font-black uppercase tracking-[0.3em] flex items-center gap-3 font-mono">
+                                TREND_ENGINE_X
                             </h5>
-                            <div className="space-y-1 pl-3 border-l-2 border-muted">
+                            <div className="space-y-2 pl-4 border-l-[1px] border-white/5">
                                 <Toggle label="Supertrend AI" value={chartConfig.showSupertrend} onToggle={() => setChartConfig(c => ({ ...c, showSupertrend: !c.showSupertrend }))} />
                                 <Toggle label="Smart Trend Cloud" value={chartConfig.showTrendCloud} onToggle={() => setChartConfig(c => ({ ...c, showTrendCloud: !c.showTrendCloud }))} />
                                 <Toggle label="SMA Array (5/20/50)" value={chartConfig.showSMA20} onToggle={() => setChartConfig(c => ({ ...c, showSMA20: !c.showSMA20, showSMA5: !c.showSMA5, showSMA50: !c.showSMA50 }))} />
@@ -251,11 +250,10 @@ export const StockChart: React.FC<StockChartProps> = ({ data, interval, options 
 
                         {/* 2. Volatility & Impulse */}
                         <div>
-                            <h5 className="text-emerald-500 text-[10px] mb-3 font-black uppercase tracking-widest flex items-center gap-2">
-                                <div className="w-1 h-3 bg-emerald-500 rounded-full"></div>
-                                Volatility & Impulse
+                            <h5 className="text-emerald-500/60 text-[10px] mb-4 font-black uppercase tracking-[0.3em] flex items-center gap-3 font-mono">
+                                VOLATILITY_SCANNER
                             </h5>
-                            <div className="space-y-1 pl-3 border-l-2 border-muted">
+                            <div className="space-y-2 pl-4 border-l-[1px] border-white/5">
                                 <Toggle label="Bollinger Bands" value={chartConfig.showBB} onToggle={() => setChartConfig(c => ({ ...c, showBB: !c.showBB }))} />
                                 <Toggle label="RSI Scanner" value={chartConfig.showRSI} onToggle={() => setChartConfig(c => ({ ...c, showRSI: !c.showRSI }))} />
                                 <Toggle label="Volume Flow" value={chartConfig.showVolume} onToggle={() => setChartConfig(c => ({ ...c, showVolume: !c.showVolume }))} />
@@ -264,11 +262,10 @@ export const StockChart: React.FC<StockChartProps> = ({ data, interval, options 
 
                         {/* 3. AI & Macro */}
                         <div>
-                            <h5 className="text-purple-500 text-[10px] mb-3 font-black uppercase tracking-widest flex items-center gap-2">
-                                <div className="w-1 h-3 bg-purple-500 rounded-full"></div>
-                                AI & Macro Vision
+                            <h5 className="text-yellow-400/60 text-[10px] mb-4 font-black uppercase tracking-[0.3em] flex items-center gap-3 font-mono">
+                                AI_VISION_HARMONICS
                             </h5>
-                            <div className="space-y-1 pl-3 border-l-2 border-muted">
+                            <div className="space-y-2 pl-4 border-l-[1px] border-white/5">
                                 <Toggle label="Volume Profile (VPVR)" value={chartConfig.showVolumeProfile} onToggle={() => setChartConfig(c => ({ ...c, showVolumeProfile: !c.showVolumeProfile }))} />
                                 <Toggle label="Macro Event Timeline" value={chartConfig.showMacroEvents} onToggle={() => setChartConfig(c => ({ ...c, showMacroEvents: !c.showMacroEvents }))} />
                                 <Toggle label="AI Support & Resistance" value={chartConfig.showSupportResistance} onToggle={() => setChartConfig(c => ({ ...c, showSupportResistance: !c.showSupportResistance }))} />

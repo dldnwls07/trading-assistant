@@ -259,7 +259,7 @@ var DevicePixelContentBoxBinding = (
       var ratio = (_b = (_a = this._devicePixelRatioObservable) === null || _a === void 0 ? void 0 : _a.value) !== null && _b !== void 0 ? _b : win.devicePixelRatio;
       var canvasRects = this._canvasElement.getClientRects();
       var newSize = (
-        // eslint-disable-next-line no-negated-condition
+         
         canvasRects[0] !== void 0 ? predictedBitmapSize(canvasRects[0], ratio) : size({
           width: this._canvasElementClientSize.width * ratio,
           height: this._canvasElementClientSize.height * ratio
@@ -2093,7 +2093,7 @@ var SeriesHorizontalLinePaneView = class {
   }
 };
 var SeriesHorizontalBaseLinePaneView = class extends SeriesHorizontalLinePaneView {
-  // eslint-disable-next-line no-useless-constructor
+   
   constructor(series) {
     super(series);
   }
@@ -2311,7 +2311,7 @@ var SeriesLastPriceAnimationPaneView = class {
   }
 };
 var SeriesPriceLinePaneView = class extends SeriesHorizontalLinePaneView {
-  // eslint-disable-next-line no-useless-constructor
+   
   constructor(series) {
     super(series);
   }
@@ -2854,7 +2854,7 @@ var DataConflater = class {
     };
   }
   // fold [start, end) with override at overrideIndex
-  // eslint-disable-next-line max-params
+   
   _private__mergeRangeWithOverride(data, start, end, overrideIndex, overrideRow, customReducer, isCustomSeries = false, priceValueBuilder) {
     const first = start === overrideIndex ? overrideRow : data[start];
     if (end - start === 1) {
@@ -2905,7 +2905,7 @@ var DataConflater = class {
   /**
    * Update only the last chunk in cached conflated data efficiently.
    */
-  // eslint-disable-next-line max-params
+   
   _private__updateLastChunkInCache(originalData, newLastRow, conflationLevel, cachedRows, isCustomSeries = false, customReducer, priceValueBuilder) {
     if (cachedRows.length === 0) {
       return cachedRows;
@@ -4730,7 +4730,7 @@ var PriceScale = class {
       _internal_mode: this._private__options.mode
     };
   }
-  // eslint-disable-next-line complexity
+   
   _internal_setMode(newMode) {
     const oldMode = this._internal_mode();
     let priceRange = null;
@@ -5192,7 +5192,7 @@ var PriceScale = class {
     this._private__marksCache = null;
     this._private__markBuilder._internal_rebuildTickMarks();
   }
-  // eslint-disable-next-line complexity
+   
   _private__recalculatePriceRangeImpl() {
     if (this._internal_isCustomPriceRange() && !this._internal_isAutoScale()) {
       return;
@@ -6139,7 +6139,7 @@ var TimeScale = class {
   _internal_rightOffset() {
     return this._private__rightOffset;
   }
-  // eslint-disable-next-line complexity
+   
   _internal_marks() {
     if (this._internal_isEmpty()) {
       return null;
@@ -7885,7 +7885,7 @@ var MouseEventHandler = class {
       _internal_manhattanDistance: manhattanDistance
     };
   }
-  // eslint-disable-next-line complexity
+   
   _private__touchEndHandler(touchEndEvent) {
     let touch = touchWithId(touchEndEvent.changedTouches, ensureNotNull(this._private__activeTouchId));
     if (touch === null && touchEndEvent.touches.length === 0) {
@@ -9663,7 +9663,7 @@ var PaneWidget = class _PaneWidget {
       return;
     }
   }
-  // eslint-disable-next-line complexity
+   
   _private__pressedMouseTouchMoveEvent(event) {
     if (this._private__state === null) {
       return;
@@ -10398,7 +10398,7 @@ var ChartWidget = class {
       separator._internal_update();
     });
   }
-  // eslint-disable-next-line complexity
+   
   _private__applyAutoSizeOptions(options) {
     if (options.autoSize === void 0 && this._private__observer && (options.width !== void 0 || options.height !== void 0)) {
       warn(`You should turn autoSize off explicitly before specifying sizes; try adding options.autoSize: false to new options`);
@@ -10499,7 +10499,7 @@ var ChartWidget = class {
       height: totalHeight
     });
   }
-  // eslint-disable-next-line complexity
+   
   _private__adjustSizeImpl() {
     let totalStretch = 0;
     let leftPriceAxisWidth = 0;
@@ -11062,7 +11062,7 @@ var DataLayer = class {
   _internal_removeSeries(series) {
     return this._internal_setSeriesData(series, []);
   }
-  // eslint-disable-next-line complexity
+   
   _internal_updateSeriesData(series, data, historicalUpdate) {
     if (historicalUpdate && series._internal_isConflationEnabled()) {
       throw new Error("Historical updates are not supported when conflation is enabled. Conflation requires data to be processed in order.");
@@ -12975,7 +12975,7 @@ var yieldChartOptionsDefaults = {
 function generateWhitespaceData({ _internal_start: start, _internal_end: end, _internal_resolution: resolution }) {
   return Array.from(
     { length: Math.floor((end - start) / resolution) + 1 },
-    // eslint-disable-next-line quote-props
+     
     (item, i) => ({ "time": start + i * resolution })
   );
 }
@@ -13159,7 +13159,7 @@ var PaneRendererAreaBase = class extends BitmapCoordinatesPaneRenderer {
   }
 };
 var GradientStyleCache = class {
-  // eslint-disable-next-line complexity
+   
   _internal_get(scope, params) {
     const cachedParams = this._private__params;
     const { _internal_topColor1: topColor1, _internal_topColor2: topColor2, _internal_bottomColor1: bottomColor1, _internal_bottomColor2: bottomColor2, _internal_baseLevelCoordinate: baseLevelCoordinate, _internal_topCoordinate: topCoordinate, _internal_bottomCoordinate: bottomCoordinate } = params;
@@ -13450,7 +13450,7 @@ var PaneRendererBars = class extends BitmapCoordinatesPaneRenderer {
   _internal_setData(data) {
     this._private__data = data;
   }
-  // eslint-disable-next-line complexity
+   
   _internal__drawImpl({ context: ctx, horizontalPixelRatio, verticalPixelRatio }) {
     if (this._private__data === null || this._private__data._internal_bars.length === 0 || this._private__data._internal_visibleRange === null) {
       return;
@@ -13818,7 +13818,7 @@ var PaneRendererHistogram = class extends BitmapCoordinatesPaneRenderer {
       ctx.fillRect(current._internal_left, top, current._internal_right - current._internal_left + 1, bottom - top);
     }
   }
-  // eslint-disable-next-line complexity
+   
   _private__fillPrecalculatedCache(pixelRatio) {
     if (this._private__data === null || this._private__data._internal_items.length === 0 || this._private__data._internal_visibleRange === null) {
       this._private__precalculatedCache = [];

@@ -545,7 +545,7 @@ function toFormData(obj, formData, options) {
         key = removeBrackets(key);
         arr.forEach(function each(el, index) {
           !(utils_default.isUndefined(el) || el === null) && formData.append(
-            // eslint-disable-next-line no-nested-ternary
+             
             indexes === true ? renderKey([key], index, dots) : indexes === null ? key : key + "[]",
             convertValue(el)
           );

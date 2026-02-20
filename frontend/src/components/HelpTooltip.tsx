@@ -55,7 +55,7 @@ const HelpTooltip: React.FC<HelpTooltipProps> = ({ indicatorId, title, isDark })
         <div className="relative inline-block ml-1">
             <button
                 onClick={(e) => { e.stopPropagation(); handleOpen(); }}
-                className={`p-0.5 rounded-full transition-colors ${isDark ? 'text-slate-500 hover:text-blue-400 hover:bg-slate-800' : 'text-gray-400 hover:text-blue-600 hover:bg-gray-100'}`}
+                className={`p-0.5 rounded-full transition-colors ${isDark ? 'text-zinc-500 hover:text-yellow-400 hover:bg-white/5' : 'text-gray-400 hover:text-yellow-600 hover:bg-gray-100'}`}
             >
                 <Info className="w-3.5 h-3.5" />
             </button>
@@ -68,7 +68,7 @@ const HelpTooltip: React.FC<HelpTooltipProps> = ({ indicatorId, title, isDark })
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.9 }}
                             onClick={(e) => e.stopPropagation()}
-                            className={`w-full max-w-md p-6 rounded-3xl shadow-2xl border ${isDark ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-gray-100 text-gray-900'}`}
+                            className={`w-full max-w-md p-6 rounded-3xl shadow-2xl border ${isDark ? 'bg-[#09090b] border-white/10 text-zinc-100' : 'bg-white border-gray-100 text-gray-900'}`}
                         >
                             <div className="flex justify-between items-center mb-6">
                                 <h4 className="text-xl font-black">{title || indicatorId}</h4>
@@ -80,13 +80,13 @@ const HelpTooltip: React.FC<HelpTooltipProps> = ({ indicatorId, title, isDark })
                             <div className={`flex p-1 rounded-xl mb-6 ${isDark ? 'bg-slate-800' : 'bg-gray-100'}`}>
                                 <button
                                     onClick={() => toggleView('beginner')}
-                                    className={`flex-1 py-2 text-xs font-black rounded-lg transition-all ${view === 'beginner' ? (isDark ? 'bg-blue-600 text-white' : 'bg-white shadow-sm text-blue-600') : 'text-gray-500'}`}
+                                    className={`flex-1 py-2 text-xs font-black rounded-lg transition-all ${view === 'beginner' ? (isDark ? 'bg-yellow-400 text-black' : 'bg-white shadow-sm text-yellow-600') : 'text-gray-500'}`}
                                 >
                                     초보자 가이드
                                 </button>
                                 <button
                                     onClick={() => toggleView('expert')}
-                                    className={`flex-1 py-2 text-xs font-black rounded-lg transition-all ${view === 'expert' ? (isDark ? 'bg-blue-600 text-white' : 'bg-white shadow-sm text-blue-600') : 'text-gray-500'}`}
+                                    className={`flex-1 py-2 text-xs font-black rounded-lg transition-all ${view === 'expert' ? (isDark ? 'bg-yellow-400 text-black' : 'bg-white shadow-sm text-yellow-600') : 'text-gray-500'}`}
                                 >
                                     전문가 분석
                                 </button>
@@ -94,7 +94,7 @@ const HelpTooltip: React.FC<HelpTooltipProps> = ({ indicatorId, title, isDark })
 
                             <div className="min-h-[100px] flex items-center justify-center">
                                 {loading ? (
-                                    <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <div className="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
                                 ) : (
                                     <p className="text-sm leading-relaxed font-medium opacity-90">
                                         {explanation}

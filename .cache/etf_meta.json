@@ -13,5 +13,45 @@
     "base": "__NONE__",
     "multiplier": 0.0,
     "updated": "2026-02-19T23:26:43.739864"
+  },
+  "QQQ": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-19T23:28:10.042900"
+  },
+  "TQQQ": {
+    "base": "QQQ",
+    "multiplier": 3.0,
+    "updated": "2026-02-19T23:28:17.354810"
+  },
+  "NVDA": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-19T23:28:27.173597"
+  },
+  "000660.KS": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-20T09:42:11.694321"
+  },
+  "005930.KS": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-20T09:44:16.047817"
+  },
+  "TSLA": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-20T09:45:06.298091"
+  },
+  "ORCL": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-20T09:46:26.256793"
+  },
+  "PLTR": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-20T09:47:53.944658"
   }
 }

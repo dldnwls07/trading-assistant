@@ -10,11 +10,11 @@ export default defineConfig({
   ],
   build: {
     // Node v24 환경에서 Rollup 크래시를 방지하기 위해 설정을 간소화합니다.
-    minify: false,
+    minify: true,
     sourcemap: false,
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
-      maxParallelFileOps: 1, // 파일 처리 병렬도를 낮춰 메모리/스레드 이슈 방지
+      maxParallelFileOps: 1,
     }
   }
 })

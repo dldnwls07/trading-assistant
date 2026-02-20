@@ -13,89 +13,84 @@ const StrategyCard: React.FC<StrategyCardProps> = ({ analysis, isDark }) => {
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="grid grid-cols-1 lg:grid-cols-12 gap-6"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1 }}
+            className="space-y-6"
         >
-            {/* Market Regime Card (5 columns) */}
-            <div className={`lg:col-span-5 p-8 rounded-3xl border shadow-xl flex flex-col justify-between transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2.5 rounded-2xl" style={{ backgroundColor: `${analysis.market_regime.color}15` }}>
-                        <Shield className="w-6 h-6" style={{ color: analysis.market_regime.color }} />
+            {/* Market Regime Section - Stitch Minimalist */}
+            <div className="p-6 rounded-xl border bg-white/5 backdrop-blur-md border-white/10 shadow-xl relative overflow-hidden group">
+                <div className="absolute inset-x-0 top-0 h-[2px] opacity-40" style={{ backgroundColor: analysis.market_regime.color }}></div>
+
+                <div className="flex items-center gap-4 mb-6">
+                    <div className="p-2 rounded-lg border border-white/5 bg-white/5">
+                        <Shield className="w-5 h-5 text-zinc-400" />
                     </div>
                     <div>
-                        <h3 className="text-xl font-black">Market Regime</h3>
-                        <p className="text-[10px] opacity-50 font-black uppercase tracking-widest">Core Narrative Focus</p>
+                        <h3 className="text-sm font-bold tracking-widest uppercase font-mono text-zinc-500">REGIME_SIGNAL</h3>
                     </div>
                 </div>
 
-                <div>
-                    <div className="text-4xl font-black mb-3 tracking-tighter" style={{ color: analysis.market_regime.color }}>
+                <div className="mb-8">
+                    <div className="text-3xl font-bold mb-2 tracking-tighter font-mono uppercase leading-tight" style={{ color: analysis.market_regime.color }}>
                         {analysis.market_regime.label}
                     </div>
-                    <p className="text-sm font-medium opacity-70 leading-relaxed mb-8">
+                    <p className="text-[11px] font-medium text-zinc-400 leading-relaxed font-mono">
                         {analysis.market_regime.desc}
                     </p>
                 </div>
 
-                <div className={`p-4 rounded-2xl flex items-center gap-4 ${isDark ? 'bg-slate-800/50' : 'bg-gray-50'}`}>
-                    <div className="w-12 h-12 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-500">
-                        <TrendingUp size={24} />
+                <div className="p-4 rounded-lg flex items-center gap-3 bg-white/[0.02] border border-white/5">
+                    <div className="w-10 h-10 rounded-lg bg-yellow-400/10 flex items-center justify-center text-yellow-400 border border-yellow-400/10">
+                        <TrendingUp size={20} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-black opacity-40 uppercase">Primary Driver</p>
-                        <p className="text-xs font-black">{analysis.market_regime.regime === 'Bull' ? 'Momentum Accumulation' : analysis.market_regime.regime === 'VCP' ? 'Volatility Contraction' : 'Distribution / Risk Off'}</p>
+                        <p className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest font-mono">PRIMARY_DRIVER</p>
+                        <p className="text-[10px] font-bold text-zinc-300 uppercase font-mono">{analysis.market_regime.regime === 'Bull' ? 'MOMENTUM_ACCUM' : analysis.market_regime.regime === 'VCP' ? 'VOL_CONTRACTION' : 'RISK_SHIELD'}</p>
                     </div>
                 </div>
             </div>
 
-            {/* Strategy Checklist (7 columns) */}
-            <div className={`lg:col-span-7 p-8 rounded-3xl border shadow-xl transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
-                <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-orange-500/10 p-2.5 rounded-2xl text-orange-500">
-                            <LayoutDashboard className="w-6 h-6" />
+            {/* Alpha Selection Box (Strategy Checklist) */}
+            <div className="p-6 rounded-xl border bg-white/5 backdrop-blur-md border-white/10 shadow-xl relative overflow-hidden group">
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-yellow-400/10 p-2 rounded-lg text-yellow-400 border border-yellow-400/20">
+                            <LayoutDashboard className="w-5 h-5" />
                         </div>
-                        <h3 className="text-xl font-black">Alpha Selection Box</h3>
+                        <h3 className="text-sm font-bold tracking-widest uppercase font-mono text-zinc-100">ALPHA_BOX</h3>
                     </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1 bg-green-500/10 text-green-500 rounded-full text-[10px] font-black uppercase">
-                        <div className="w-1 h-1 rounded-full bg-green-500 animate-pulse"></div>
-                        Live Strategy Sync
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 rounded text-[8px] font-bold uppercase tracking-widest">
+                        <div className="w-1 h-1 rounded-full bg-yellow-400 animate-pulse"></div>
+                        SYNC
                     </div>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                     {analysis.strategy_checklist ? analysis.strategy_checklist.map((item) => (
                         <div
                             key={item.id}
-                            className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${item.status ? (isDark ? 'bg-green-500/5 border-green-500/20' : 'bg-green-50 border-green-100') : (isDark ? 'bg-slate-800/30 border-slate-700 opacity-60' : 'bg-gray-50 border-gray-100 opacity-60')}`}
+                            className={`p-4 rounded-lg border transition-colors duration-200 flex items-center justify-between hover:bg-white/[0.04] ${item.status ? 'bg-yellow-400/5 border-yellow-400/20' : 'bg-transparent border-white/5 opacity-40'}`}
                         >
-                            <div className="flex items-center gap-4">
-                                {item.status ?
-                                    <CheckCircle2 size={18} className="text-green-500 shrink-0" /> :
-                                    <AlertTriangle size={18} className="text-slate-400 shrink-0" />
-                                }
-                                <div>
-                                    <p className={`text-sm font-bold ${item.status ? (isDark ? 'text-green-400' : 'text-green-700') : 'text-slate-400'}`}>
-                                        {item.text}
-                                    </p>
-                                    <span className="text-[9px] font-black uppercase opacity-40">Priority: {item.importance}</span>
+                            <div className="flex items-center gap-3">
+                                <div className={`p-1 rounded-md border border-white/5 ${item.status ? 'bg-yellow-400/20 text-yellow-400' : 'bg-white/5 text-zinc-500'}`}>
+                                    {item.status ?
+                                        <CheckCircle2 size={12} strokeWidth={3} /> :
+                                        <AlertTriangle size={12} />
+                                    }
                                 </div>
+                                <p className={`text-[11px] font-bold tracking-tight ${item.status ? 'text-zinc-100' : 'text-zinc-600'}`}>
+                                    {item.text}
+                                </p>
                             </div>
-                            {item.status && (
-                                <div className="px-2.5 py-1 rounded bg-green-500/20 text-green-500 text-[10px] font-black">
-                                    PASS
-                                </div>
-                            )}
                         </div>
                     )) : (
-                        <div className="text-sm opacity-50">No checklist available.</div>
+                        <div className="py-6 text-center text-zinc-800 text-[10px] font-bold uppercase tracking-widest font-mono">NO_DATA_STREAMS</div>
                     )}
                 </div>
 
-                <div className="mt-6 flex items-center gap-2 text-[11px] font-medium opacity-50 italic">
-                    <Zap size={12} className="text-blue-500" />
-                    These criteria are based on O'Neil & Minervini's institutional-grade selection rules.
+                <div className="mt-6 pt-5 border-t border-white/5 flex items-center gap-2 text-[8px] font-bold text-zinc-700 tracking-widest font-mono uppercase">
+                    <Zap size={10} className="text-yellow-400/50 shrink-0" />
+                    RULES: O'NEIL_V2.1_ALPHA
                 </div>
             </div>
         </motion.div>

@@ -1,14 +1,12 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Globe, Moon, Sun, Bell, Shield, Settings } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Settings, X, Bell, Globe, Command } from 'lucide-react';
 import { useTranslation } from '../utils/translations';
 
 const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
     const t = useTranslation(settings);
 
-    if (!isOpen) return null;
-
-    const isDark = settings?.darkMode;
+    // isOpen 조건을 AnimatePresence 외부에서 제어해야 exit 애니메이션이 정상 동작함
+    // 내부에서 early return 시 backdrop만 남고 모달 내용이 사라지는 버그 방지
 
     const languages = [
         { code: 'ko', name: '한국어', icon: '🇰🇷' },
@@ -18,97 +16,100 @@ const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
     ];
 
     return (
-        <AnimatePresence>
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+        <AnimatePresence mode="wait">
+            {isOpen && <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+                {/* Backdrop */}
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: 30 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={onClose}
+                    className="absolute inset-0 bg-black/80 backdrop-blur-xl"
+                />
+
+                {/* Modal Container */}
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.9, y: 40 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: 30 }}
-                    className={`rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transition-colors duration-300 ${isDark ? 'bg-slate-900 border border-slate-800 text-slate-100' : 'bg-white border border-gray-100 text-gray-900'}`}
+                    exit={{ opacity: 0, scale: 0.9, y: 40 }}
+                    className="relative w-full max-w-lg bg-[#09090b] border border-white/10 rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.8)] overflow-hidden"
                 >
                     {/* Header */}
-                    <div className={`px-6 py-5 border-b flex items-center justify-between ${isDark ? 'border-slate-800 bg-slate-900/50' : 'border-gray-100 bg-gray-50/50'}`}>
-                        <div className="flex items-center gap-3">
-                            <div className="bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-500/20">
-                                <Settings className="w-5 h-5" />
+                    <header className="px-10 py-8 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-yellow-400 p-3 rounded-2xl text-black shadow-lg shadow-yellow-400/20">
+                                <Settings className="w-6 h-6" />
                             </div>
-                            <h2 className="text-xl font-black">{t.settings}</h2>
+                            <div>
+                                <h2 className="text-2xl font-black tracking-tighter uppercase text-zinc-100">{t.settings || 'CONFIG_NODE'}</h2>
+                                <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest font-mono">SYSTEM_PREFERENCES_v4.2</p>
+                            </div>
                         </div>
-                        <button onClick={onClose} className={`p-2 rounded-full transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-gray-200 text-gray-500'}`}>
+                        <button
+                            onClick={onClose}
+                            className="p-3 rounded-2xl hover:bg-white/5 text-zinc-500 hover:text-white transition-all border border-transparent hover:border-white/10"
+                        >
                             <X className="w-6 h-6" />
                         </button>
-                    </div>
+                    </header>
 
                     {/* Content */}
-                    <div className="p-8 space-y-10">
+                    <div className="p-10 space-y-12">
                         {/* Language Section */}
-                        <section>
-                            <label className={`text-[10px] font-black uppercase tracking-[0.2em] mb-4 block ${isDark ? 'text-slate-500' : 'text-gray-400'}`}>
-                                {t.language}
-                            </label>
-                            <div className="grid grid-cols-2 gap-3">
+                        <section className="space-y-6">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Globe className="w-4 h-4 text-yellow-400/50" />
+                                <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 font-mono">
+                                    CORE_LOCALIZATION_PROTOCOL
+                                </label>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
                                 {languages.map((lang) => (
                                     <button
                                         key={lang.code}
                                         onClick={() => setSettings(prev => ({ ...prev, language: lang.code }))}
-                                        className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${settings.language === lang.code
-                                            ? (isDark ? 'border-blue-500 bg-blue-500/10 text-blue-400' : 'border-blue-600 bg-blue-50 text-blue-700 shadow-md')
-                                            : (isDark ? 'border-slate-800 hover:border-slate-700 text-slate-400' : 'border-gray-100 hover:border-gray-200 text-gray-600')
+                                        className={`flex items-center gap-4 p-5 rounded-[2rem] border-2 transition-all duration-300 relative group ${settings.language === lang.code
+                                            ? 'border-yellow-400 bg-yellow-400/5 text-yellow-400 shadow-lg shadow-yellow-400/5'
+                                            : 'border-white/5 hover:border-white/10 bg-white/2 text-zinc-500 hover:text-zinc-300'
                                             }`}
                                     >
-                                        <span className="text-2xl drop-shadow-sm">{lang.icon}</span>
-                                        <span className="font-bold text-sm tracking-tight">{lang.name}</span>
+                                        <span className="text-2xl grayscale group-hover:grayscale-0 transition-all">{lang.icon}</span>
+                                        <span className="font-black text-xs tracking-tighter uppercase">{lang.name}</span>
+                                        {settings.language === lang.code && (
+                                            <div className="absolute top-2 right-4 w-1.5 h-1.5 bg-yellow-400 rounded-full shadow-[0_0_8px_rgba(250,204,21,0.8)]" />
+                                        )}
                                     </button>
                                 ))}
                             </div>
                         </section>
 
                         {/* General Section */}
-                        <section className="space-y-4">
-                            <label className={`text-[10px] font-black uppercase tracking-[0.2em] mb-4 block ${isDark ? 'text-slate-500' : 'text-gray-400'}`}>
-                                {t.set_visual_signals}
-                            </label>
-
-                            <div className={`flex items-center justify-between p-5 rounded-3xl transition-colors ${isDark ? 'bg-slate-800/50 border border-slate-800' : 'bg-gray-50 border border-transparent'}`}>
-                                <div className="flex items-center gap-4">
-                                    <div className={`p-2.5 rounded-xl shadow-sm ${isDark ? 'bg-slate-900 border border-slate-700' : 'bg-white'}`}>
-                                        {isDark ? <Moon className="w-5 h-5 text-blue-400" /> : <Sun className="w-5 h-5 text-orange-400" />}
-                                    </div>
-                                    <div>
-                                        <p className="font-black text-sm">{t.darkMode}</p>
-                                        <p className="text-[10px] opacity-50 font-bold uppercase tracking-wider">{isDark ? t.set_dark_opt : t.set_light_std}</p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => setSettings(prev => ({ ...prev, darkMode: !prev.darkMode }))}
-                                    className={`w-14 h-7 rounded-full transition-all relative ${isDark ? 'bg-blue-600 shadow-lg shadow-blue-500/20' : 'bg-gray-300'}`}
-                                >
-                                    <motion.div
-                                        animate={{ x: isDark ? 28 : 4 }}
-                                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                        className="absolute top-1 w-5 h-5 bg-white rounded-full shadow-md"
-                                    />
-                                </button>
+                        <section className="space-y-6">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Command className="w-4 h-4 text-yellow-400/50" />
+                                <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 font-mono">
+                                    SIGNAL_TRANSMISSION_CONTROLS
+                                </label>
                             </div>
 
-                            <div className={`flex items-center justify-between p-5 rounded-3xl transition-colors ${isDark ? 'bg-slate-800/50 border border-slate-800' : 'bg-gray-50 border border-transparent'}`}>
-                                <div className="flex items-center gap-4">
-                                    <div className={`p-2.5 rounded-xl shadow-sm ${isDark ? 'bg-slate-900 border border-slate-700' : 'bg-white'}`}>
-                                        <Bell className={`w-5 h-5 ${settings.notifications ? (isDark ? 'text-blue-400' : 'text-blue-600') : 'text-gray-400'}`} />
+                            <div className="flex items-center justify-between p-6 rounded-[2.5rem] bg-white/2 border border-white/5 hover:bg-white/5 transition-all group">
+                                <div className="flex items-center gap-5">
+                                    <div className="p-3.5 rounded-2xl bg-zinc-900 border border-white/10 shadow-inner group-hover:border-yellow-400/30 transition-colors">
+                                        <Bell className={`w-6 h-6 ${settings.notifications ? 'text-yellow-400' : 'text-zinc-700'}`} />
                                     </div>
                                     <div>
-                                        <p className="font-black text-sm">{t.set_realtime_pulse}</p>
-                                        <p className="text-[10px] opacity-50 font-bold uppercase tracking-wider">{t.set_push_notif}</p>
+                                        <p className="font-black text-sm text-zinc-100 uppercase tracking-tight">{t.set_realtime_pulse || 'NEURAL_PUSH_SIGNALS'}</p>
+                                        <p className="text-[9px] opacity-40 font-black uppercase tracking-[0.2em] font-mono mt-1">Real-time market event broadcasting</p>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => setSettings(prev => ({ ...prev, notifications: !prev.notifications }))}
-                                    className={`w-14 h-7 rounded-full transition-all relative ${settings.notifications ? (isDark ? 'bg-blue-600 shadow-lg shadow-blue-500/20' : 'bg-blue-600') : 'bg-gray-300'}`}
+                                    className={`w-16 h-8 rounded-full transition-all relative border ${settings.notifications ? 'bg-yellow-400 border-yellow-300 shadow-lg shadow-yellow-400/30' : 'bg-zinc-800 border-zinc-700'}`}
                                 >
                                     <motion.div
-                                        animate={{ x: settings.notifications ? 28 : 4 }}
+                                        animate={{ x: settings.notifications ? 32 : 4 }}
                                         transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                        className="absolute top-1 w-5 h-5 bg-white rounded-full shadow-md"
+                                        className={`absolute top-1 w-5.5 h-5.5 rounded-full shadow-md ${settings.notifications ? 'bg-black' : 'bg-zinc-500'}`}
                                     />
                                 </button>
                             </div>
@@ -116,14 +117,14 @@ const SettingsModal = ({ isOpen, onClose, settings, setSettings }) => {
                     </div>
 
                     {/* Footer */}
-                    <div className={`px-6 py-5 text-center transition-colors ${isDark ? 'bg-slate-950/50 border-t border-slate-800' : 'bg-gray-50 border-t border-gray-100'}`}>
-                        <p className={`text-[10px] font-black tracking-widest uppercase opacity-40 ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
-                            QuantCore Hub v4.2.0 • Advanced Trading Node
+                    <footer className="px-10 py-6 text-center border-t border-white/5 bg-white/[0.02]">
+                        <p className="text-[9px] font-black tracking-[0.5em] uppercase text-zinc-700 font-mono">
+                            QUANT_ORACLE_INTERFACE // STITCH_PROTOCOL_ENABLED
                         </p>
-                    </div>
+                    </footer>
                 </motion.div>
-            </div >
-        </AnimatePresence >
+            </div>}
+        </AnimatePresence>
     );
 };
 
