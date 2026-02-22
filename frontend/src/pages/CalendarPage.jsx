@@ -1,4 +1,3 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Calendar as CalendarIcon,
@@ -18,18 +17,8 @@ import {
     AlertCircle
 } from 'lucide-react';
 import { useTranslation } from '../utils/translations';
-import api from '../utils/api';
-import CalendarDetailModal from '../components/CalendarDetailModal';
-
-// 백엔드 연결 실패 시 표시할 데모 이벤트 (폴백 데이터)
-const DEMO_EVENTS = [
-    { date: new Date().toISOString().split('T')[0], time: '08:30', title: '미국 CPI 물가지수', category: 'inflation', country: 'US', importance: 'critical', previous: '3.1%', forecast: '3.0%', actual: '-' },
-    { date: new Date().toISOString().split('T')[0], time: '14:00', title: 'FOMC 금리 결정', category: 'policy', country: 'US', importance: 'critical', previous: '5.25%', forecast: '5.25%', actual: '-' },
-    { date: new Date(Date.now() + 86400000).toISOString().split('T')[0], time: '08:30', title: '미국 실업수당 청구건수', category: 'labor', country: 'US', importance: 'high', previous: '212K', forecast: '215K', actual: '-' },
-    { date: new Date(Date.now() + 86400000).toISOString().split('T')[0], time: '10:00', title: '미국 소매판매', category: 'consumption', country: 'US', importance: 'high', previous: '0.4%', forecast: '0.2%', actual: '-' },
-    { date: new Date(Date.now() + 172800000).toISOString().split('T')[0], time: '09:00', title: '한국 수출입통계', category: 'macro', country: 'KR', importance: 'medium', previous: '+6.2%', forecast: '+5.8%', actual: '-' },
-    { date: new Date(Date.now() + 172800000).toISOString().split('T')[0], time: '21:30', title: '미국 PCE 물가지수', category: 'inflation', country: 'US', importance: 'critical', previous: '2.6%', forecast: '2.5%', actual: '-' },
-];
+import CalendarDetailModal from '../features/calendar/components/CalendarDetailModal';
+import { useCalendar } from '../features/calendar/hooks/useCalendar';
 
 // Animation variants
 const containerVariants = {
@@ -65,79 +54,18 @@ const StyledSelect = ({ label, value, options, onChange, icon: Icon }) => (
 );
 
 const CalendarPage = ({ settings }) => {
-    const [events, setEvents] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState('upcoming');
-    const [searchQuery, setSearchQuery] = useState('');
-    const [selectedCategory, setSelectedCategory] = useState('all');
-    const [selectedImportance, setSelectedImportance] = useState('all');
-    const [selectedEvent, setSelectedEvent] = useState(null);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [fetchError, setFetchError] = useState(null); // 에러 표시용 (폴백 사용 중 알림)
-
     const t = useTranslation(settings);
-
-    useEffect(() => {
-        fetchEvents();
-    }, []);
-
-    const fetchEvents = async () => {
-        setLoading(true);
-        setFetchError(null);
-        try {
-            const res = await api.get('/api/calendar');
-            const fetchedEvents = res.data.events || [];
-            if (fetchedEvents.length === 0) {
-                // 빈 응답이면 데모 데이터로 폴백
-                setEvents(DEMO_EVENTS);
-                setFetchError('API 응답이 비어있어 데모 데이터를 표시합니다.');
-            } else {
-                setEvents(fetchedEvents);
-            }
-        } catch (err) {
-            console.error("Failed to fetch calendar events:", err);
-            // 백엔드 연결 실패 시 데모 데이터로 폴백하여 빈 화면 방지
-            setEvents(DEMO_EVENTS);
-            setFetchError('백엔드 연결 실패 - 데모 데이터를 표시 중입니다. 실제 서버 실행 후 새로고침하세요.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const filteredEvents = useMemo(() => {
-        const now = new Date();
-        const startOfToday = new Date(now.setHours(0, 0, 0, 0));
-
-        return events.filter(e => {
-            const eDate = new Date(e.date);
-            const matchesSearch = e.title.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesCategory = selectedCategory && selectedCategory !== 'all' ? e.category === selectedCategory : true;
-            const matchesImportance = selectedImportance && selectedImportance !== 'all' ? e.importance === selectedImportance : true;
-
-            const isUpcoming = eDate >= startOfToday;
-            const matchesTab = activeTab === 'upcoming' ? isUpcoming : !isUpcoming;
-
-            return matchesSearch && matchesCategory && matchesImportance && matchesTab;
-        }).sort((a, b) => {
-            const dateA = new Date(a.date);
-            const dateB = new Date(b.date);
-            if (dateA - dateB !== 0) {
-                return activeTab === 'upcoming' ? dateA - dateB : dateB - dateA;
-            }
-            const timeA = a.time === 'TBA' ? '00:00' : a.time;
-            const timeB = b.time === 'TBA' ? '00:00' : b.time;
-            return activeTab === 'upcoming' ? timeA.localeCompare(timeB) : timeB.localeCompare(timeA);
-        });
-    }, [events, searchQuery, selectedCategory, selectedImportance, activeTab]);
-
-    const groupedEvents = useMemo(() => {
-        return filteredEvents.reduce((acc, event) => {
-            const date = event.date;
-            if (!acc[date]) acc[date] = [];
-            acc[date].push(event);
-            return acc;
-        }, {});
-    }, [filteredEvents]);
+    const {
+        loading, fetchError,
+        activeTab, setActiveTab,
+        searchQuery, setSearchQuery,
+        selectedCategory, setSelectedCategory,
+        selectedImportance, setSelectedImportance,
+        selectedEvent,
+        isModalOpen, setIsModalOpen,
+        filteredEvents, groupedEvents,
+        fetchEvents, handleEventClick
+    } = useCalendar();
 
     const getImportanceColor = (imp) => {
         switch (imp) {
@@ -180,11 +108,6 @@ const CalendarPage = ({ settings }) => {
         { value: 'medium', label: '보통' },
         { value: 'low', label: '낮음' }
     ];
-
-    const handleEventClick = (event) => {
-        setSelectedEvent(event);
-        setIsModalOpen(true);
-    };
 
     return (
         <div className="min-h-screen py-10 transition-all duration-500 bg-transparent text-foreground">

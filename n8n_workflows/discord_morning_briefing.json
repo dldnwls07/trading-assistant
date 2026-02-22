@@ -1,0 +1,163 @@
+{
+    "name": "아침 시황 & 뉴스 디스코드 브리핑",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "0 8 * * *"
+                        }
+                    ]
+                }
+            },
+            "id": "f5f5f5f5-trigger",
+            "name": "Schedule Trigger (아침 8시)",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=SPY",
+                "options": {}
+            },
+            "id": "e4e4e4e4-http",
+            "name": "야후 파이낸스 뉴스 RSS 가져오기",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                200,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "options": {}
+            },
+            "id": "c3c3c3c3-xml",
+            "name": "XML to JSON 변환",
+            "type": "n8n-nodes-base.xml",
+            "typeVersion": 1,
+            "position": [
+                400,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const items = $input.all()[0].json.rss.channel.item;\nlet newsText = \"오늘의 주요 뉴스 제목:\\n\";\n\n// 상위 5개 뉴스만 추출\nfor (let i = 0; i < Math.min(5, items.length); i++) {\n  newsText += `- ${items[i].title}\\n`;\n}\n\nreturn [{ json: { newsText: newsText } }];"
+            },
+            "id": "b2b2b2b2-code",
+            "name": "뉴스 텍스트 추출 (상위 5개)",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                600,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "resource": "text",
+                "operation": "generate",
+                "prompt": "=다음은 오늘 아침 주요 금융 뉴스들입니다. 트레이더들을 위해 디스코드에 올릴 아침 시황 브리핑을 작성해주세요.\n요구사항:\n1. 한국어로 친근하고 전문성 있게 작성할 것\n2. 가독성을 위해 이모지(📊, 🚀, 📉 등)를 적절히 사용할 것\n3. 내용을 3~4문장으로 핵심만 요약할 것\n\n뉴스 원본:\n{{ $json.newsText }}",
+                "options": {}
+            },
+            "id": "a1a1a1a1-gemini",
+            "name": "Google Gemini (시황 요약)",
+            "type": "n8n-nodes-base.googleGemini",
+            "typeVersion": 1,
+            "position": [
+                800,
+                0
+            ],
+            "credentials": {
+                "googleGeminiApi": {
+                    "id": "YOUR_GEMINI_CREDENTIAL_ID",
+                    "name": "Google Gemini API account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "authentication": "webhook",
+                "webhookUri": "YOUR_DISCORD_WEBHOOK_URL_HERE",
+                "text": "={{ $json.text || $json.content }}",
+                "options": {}
+            },
+            "id": "d6d6d6d6-discord",
+            "name": "Discord 웹훅 발송",
+            "type": "n8n-nodes-base.discord",
+            "typeVersion": 2,
+            "position": [
+                1000,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "Schedule Trigger (아침 8시)": {
+            "main": [
+                [
+                    {
+                        "node": "야후 파이낸스 뉴스 RSS 가져오기",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "야후 파이낸스 뉴스 RSS 가져오기": {
+            "main": [
+                [
+                    {
+                        "node": "XML to JSON 변환",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "XML to JSON 변환": {
+            "main": [
+                [
+                    {
+                        "node": "뉴스 텍스트 추출 (상위 5개)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "뉴스 텍스트 추출 (상위 5개)": {
+            "main": [
+                [
+                    {
+                        "node": "Google Gemini (시황 요약)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Gemini (시황 요약)": {
+            "main": [
+                [
+                    {
+                        "node": "Discord 웹훅 발송",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    }
+}

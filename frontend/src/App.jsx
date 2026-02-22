@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import Navigation from './components/Navigation';
-import SettingsModal from './components/SettingsModal';
+import Navigation from './widgets/Navigation';
+import SettingsModal from './widgets/SettingsModal';
 
 // Pages
 import AnalysisPage from './pages/AnalysisPage';

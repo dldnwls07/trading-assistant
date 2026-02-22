@@ -7,7 +7,7 @@ import os
 from src.data.storage import get_storage
 from src.data.collector import MarketDataCollector
 from src.utils.notifications import send_alert
-from src.agents.event_calendar import EventCalendar
+from src.agents.calendar.event_calendar import EventCalendar
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("alert-worker")

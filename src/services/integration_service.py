@@ -5,18 +5,18 @@ from typing import Dict, Any, Optional
 
 from src.config import settings
 from src.data.collector import MarketDataCollector
-from src.agents.analyst import StockAnalyst
-from src.agents.multi_timeframe import MultiTimeframeAnalyzer
-from src.agents.ml_predictor import MLPricePredictor
-from src.agents.ai_analyzer import AIAnalyzer
-from src.agents.strategy_ensemble import StrategyEnsemble
+from src.agents.core.analyst import StockAnalyst
+from src.agents.analysis.multi_timeframe import MultiTimeframeAnalyzer
+from src.agents.analysis.ml_predictor import MLPricePredictor
+from src.agents.analysis.ai_analyzer import AIAnalyzer
+from src.agents.analysis.strategy_ensemble import StrategyEnsemble
 from src.utils.backtester import Backtester
 
 logger = logging.getLogger(__name__)
 
 from src.data.storage import get_storage
 from src.data.parser import FinancialParser
-from src.agents.ai_analyzer import get_stock_events
+from src.agents.analysis.ai_analyzer import get_stock_events
 
 class IntegrationService:
     """

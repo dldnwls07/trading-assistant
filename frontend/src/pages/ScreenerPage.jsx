@@ -1,6 +1,5 @@
 /* eslint-disable unused-imports/no-unused-imports, unused-imports/no-unused-vars, no-unused-vars */
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
     Rocket,
@@ -13,7 +12,7 @@ import {
     Activity
 } from 'lucide-react';
 import { useTranslation } from '../utils/translations';
-import api from '../utils/api';
+import { useScreener } from '../features/screener/hooks/useScreener';
 
 // Moved outside to prevent recreation & leverage hardware acceleration (willChange)
 const containerVariants = {
@@ -27,34 +26,15 @@ const itemVariants = {
 };
 
 const ScreenerPage = ({ settings }) => {
-    const navigate = useNavigate();
-    const [style, setStyle] = useState('balanced');
-    const [market, setMarket] = useState('US');
-    const [recommendations, setRecommendations] = useState([]);
-    const [topMovers, setTopMovers] = useState({ gainers: [], losers: [] });
-    const [loading, setLoading] = useState(false);
-
     const t = useTranslation(settings);
-
-    useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const backendStyle = settings.tradingStyle || 'balanced';
-                const [recRes, topRes] = await Promise.all([
-                    api.get(`/api/screener/recommendations?style=${backendStyle}&market=${market}`),
-                    api.get(`/api/screener/top-movers?market=${market}`)
-                ]);
-                setRecommendations(recRes.data.recommendations || []);
-                setTopMovers(topRes.data || { gainers: [], losers: [] });
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
-    }, [market, settings.tradingStyle, style]);
+    const {
+        style, setStyle,
+        market, setMarket,
+        recommendations,
+        loading,
+        topGainers, topLosers,
+        handleAnalyze
+    } = useScreener(settings.tradingStyle || 'balanced', 'US');
 
     const memoizedStyles = useMemo(() => [
         { id: 'aggressive', label: t.scr_aggressive, icon: Rocket, color: 'text-yellow-400', bg: 'bg-yellow-400/20', border: 'border-yellow-400/40' },
@@ -66,14 +46,6 @@ const ScreenerPage = ({ settings }) => {
         { id: 'US', label: t.scr_market_us || 'US' },
         { id: 'KR', label: t.scr_market_kr || 'KR' }
     ], [t.scr_market_us, t.scr_market_kr]);
-
-    // Use derived state with useMemo to prevent slice computations on every render
-    const topGainers = useMemo(() => topMovers.gainers?.slice(0, 5) || [], [topMovers.gainers]);
-    const topLosers = useMemo(() => topMovers.losers?.slice(0, 5) || [], [topMovers.losers]);
-
-    const handleAnalyze = useCallback((ticker) => {
-        navigate(`/analysis/${encodeURIComponent(ticker)}`);
-    }, [navigate]);
 
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen py-10 transition-all duration-300 bg-[#09090b] text-foreground">

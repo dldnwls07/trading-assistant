@@ -1,29 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { StockChart } from '../components/StockChart';
+import { StockChart } from '../features/chart/components/StockChart';
 import { Search, Clock, Eye, ChevronRight, Activity, BarChart3 } from 'lucide-react';
 import { useTranslation } from '../utils/translations';
 
 // 서브 컴포넌트 임포트 (Javascript 컴포넌트들 - 추후 TS 전환 예정)
 // @ts-ignore
-import StrategyCard from '../components/analysis/StrategyCard';
+import StrategyCard from '../features/analysis/components/StrategyCard';
 // @ts-ignore
-import TradingSetup from '../components/analysis/TradingSetup';
-import AnalysisInsights from '../components/analysis/AnalysisInsights';
-import StrategicSignals from '../components/analysis/StrategicSignals';
-import CalendarWidget from '../components/analysis/CalendarWidget';
-import { ThemeList } from '../components/themes/ThemeList';
+import TradingSetup from '../features/analysis/components/TradingSetup';
+import AnalysisInsights from '../features/analysis/components/AnalysisInsights';
+import StrategicSignals from '../features/analysis/components/StrategicSignals';
+import CalendarWidget from '../features/analysis/components/CalendarWidget';
+import { ThemeList } from '../shared/ui/themes/ThemeList';
 
-import { OhlcvData, AnalysisResult } from '../types/api';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
-const API_KEY = import.meta.env.VITE_API_KEY || "trading-assistant-secret-2024";
-
-const AXIOS_CONFIG = {
-    headers: { 'X-API-Key': API_KEY }
-};
+// Feature 훅 임포트
+import { useAnalysis } from '../features/analysis/hooks/useAnalysis';
 
 const INTERVALS = [
     { label: '1m', value: '1m' },
@@ -59,142 +52,46 @@ const itemVariants: any = {
 
 const AnalysisPage: React.FC<AnalysisPageProps> = ({ settings }) => {
     const { tickerParam } = useParams<{ tickerParam: string }>();
-    const [ticker, setTicker] = useState<string>(tickerParam || '');
-    const [suggestions, setSuggestions] = useState<any[]>([]);
-    const [showSuggestions, setShowSuggestions] = useState(false);
-    const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-    const [history, setHistory] = useState<OhlcvData[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<{ message: string; suggestion: string } | null>(null);
-    const [selectedInterval, setSelectedInterval] = useState('1d');
+    const isDark = settings?.darkMode;
+    const t = useTranslation(settings);
+
+    // 새 도메인 훅 사용
+    const {
+        ticker,
+        setTicker,
+        suggestions,
+        showSuggestions,
+        setShowSuggestions,
+        analysis,
+        history,
+        loading,
+        error,
+        selectedInterval,
+        setSelectedInterval,
+        handleSearch,
+        handleUpdateHistory,
+        handleThemeSelect
+    } = useAnalysis({
+        initialTicker: tickerParam || '',
+        language: settings?.language || 'ko'
+    });
+
     const [selectedView, setSelectedView] = useState('medium');
     const [chartType, setChartType] = useState('Candle');
     const [isReportOpen, setIsReportOpen] = useState(false);
-
-    // New State for Phase 3
     const [activeTab, setActiveTab] = useState<'market' | 'themes'>('market');
-
-    const isDark = settings?.darkMode;
-    const t = useTranslation(settings);
 
     // Initial Search Effect
     useEffect(() => {
         if (tickerParam) {
-            console.log(`[AnalysisPage] Initial search for: ${tickerParam}`);
             handleSearch(tickerParam);
         }
     }, []); // Only on mount
 
-    useEffect(() => {
-        const fetchSuggestions = async () => {
-            if (ticker.length < 1) { setSuggestions([]); return; }
-            try {
-                const res = await axios.get(`${API_BASE}/search?query=${encodeURIComponent(ticker)}`, AXIOS_CONFIG);
-                setSuggestions(res.data.candidates || []);
-            } catch (err) { console.error(err); }
-        };
-        const tid = setTimeout(fetchSuggestions, 300);
-        return () => clearTimeout(tid);
-    }, [ticker]);
-
-    // Interval 변경 시 자동으로 데이터 갱신
-    useEffect(() => {
-        if (ticker && selectedInterval) {
-            handleUpdateHistory(selectedInterval);
-        }
-    }, [selectedInterval]);
-
-    const handleSearch = async (s?: string) => {
-        const sym = s || ticker;
-        if (!sym) return;
-
-        // 검색 시작 전 이전 상태 초기화 (Context Integrity 보장)
-        setLoading(true);
-        setShowSuggestions(false);
-        setError(null);
-        setAnalysis(null);
-        setHistory([]);
-
-        try {
-            const encodedSym = encodeURIComponent(sym);
-            const [analReq, histReq] = await Promise.allSettled([
-                axios.get(`${API_BASE}/analyze/${encodedSym}?lang=${settings.language}`, AXIOS_CONFIG),
-                axios.get(`${API_BASE}/history/${encodedSym}?interval=${selectedInterval}`, AXIOS_CONFIG)
-            ]);
-
-            let hasError = false;
-            let errorMessage = '';
-            let suggestion = '';
-
-            // 1. 분석 API 결과 처리
-            if (analReq.status === 'fulfilled') {
-                setAnalysis(analReq.value.data);
-                setTicker(analReq.value.data.ticker);
-            } else {
-                hasError = true;
-                errorMessage = `분석 데이터를 가져오지 못했습니다 (${sym})`;
-                suggestion = analReq.reason?.response?.data?.detail || "올바르지 않은 티커이거나 지원하지 않는 자산일 수 있습니다. (예: AAPL, 005930.KS)";
-            }
-
-            // 2. 차트(History) API 결과 처리
-            if (histReq.status === 'fulfilled') {
-                setHistory(histReq.value.data.data);
-            } else {
-                hasError = true;
-                if (!errorMessage) {
-                    errorMessage = `차트 데이터를 가져오지 못했습니다 (${sym})`;
-                    suggestion = histReq.reason?.response?.data?.detail || "해당 심볼의 시장 데이터를 수집할 수 없습니다.";
-                }
-                // 만약 History만 실패할 경우, 잘못된 분석 데이터와 매칭되는 것을 막기 위해 analysis도 초기화
-                setAnalysis(null);
-            }
-
-            // 에러가 있다면 UI 상태 업데이트
-            if (hasError) {
-                setError({ message: errorMessage, suggestion });
-            }
-
-        } catch (err: any) {
-            console.error(err);
-            setError({
-                message: "서버 통신 중 치명적인 오류가 발생했습니다.",
-                suggestion: "네트워크 연결이나 API 서버 상태를 확인하고 다시 시도하세요."
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleUpdateHistory = async (interval: string) => {
-        if (!ticker) return;
-        console.log(`[AnalysisPage] Requesting history for interval: ${interval}`);
-        try {
-            const url = `${API_BASE}/history/${encodeURIComponent(ticker)}?interval=${interval}`;
-            console.log(`[AnalysisPage] Fetching URL: ${url}`);
-            const res = await axios.get(url, AXIOS_CONFIG);
-            setHistory(res.data.data);
-            setError(null);
-            console.log(`[AnalysisPage] History data received: ${res.data.data.length} records`);
-        } catch (err: any) {
-            console.error(err);
-            setError({
-                message: `${interval} 간격의 차트 데이터 갱신에 실패했습니다.`,
-                suggestion: "네트워크 문제나 서버 응답 지연일 수 있습니다. 잠시 후 재시도하세요."
-            });
-            // 데이터가 일치하지 않게 되는 것을 방지하기 위해 컨텍스트(History, Analysis) 클리어
-            setHistory([]);
-            setAnalysis(null);
-        }
-    };
-
-    const handleThemeSelect = (theme: any) => {
-        // theme.relatedStocks[0] or similar logic
-        // Assuming theme has relatedStocks array
-        if (theme.relatedStocks && theme.relatedStocks.length > 0) {
-            const stock = theme.relatedStocks[0];
-            setTicker(stock);
+    const onThemeSelect = (theme: any) => {
+        const selectedTicker = handleThemeSelect(theme);
+        if (selectedTicker) {
             setActiveTab('market');
-            handleSearch(stock);
         }
     };
 
@@ -316,7 +213,7 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ settings }) => {
             <main className="max-w-[1700px] mx-auto min-h-[700px]">
                 {activeTab === 'themes' ? (
                     // @ts-ignore
-                    <ThemeList onThemeSelect={handleThemeSelect} />
+                    <ThemeList onThemeSelect={onThemeSelect} />
                 ) : (
                     <motion.div
                         variants={containerVariants}

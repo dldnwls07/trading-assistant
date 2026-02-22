@@ -1,4 +1,3 @@
-import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
     Sparkles,
@@ -12,57 +11,21 @@ import {
     BarChart3
 } from 'lucide-react';
 import { useTranslation } from '../utils/translations';
-import api from '../utils/api';
+import { useChat } from '../features/chat/hooks/useChat';
 
 const ChatPage = ({ settings }) => {
-    const [messages, setMessages] = useState([]);
-    const [input, setInput] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [suggestions, setSuggestions] = useState([]);
-    const messagesEndRef = useRef(null);
-
     const isDark = settings?.darkMode;
     const t = useTranslation(settings);
 
-    useEffect(() => {
-        const fetchSuggestions = async () => {
-            try {
-                const res = await api.get('/api/chat/suggestions');
-                setSuggestions(res.data.suggestions || []);
-            } catch (err) { console.error(err); }
-        };
-        fetchSuggestions();
-    }, []);
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages, loading]);
-
-    const handleSend = async (text) => {
-        const msg = text || input;
-        if (!msg.trim()) return;
-
-        const userMsg = { role: 'user', content: msg, timestamp: new Date().toLocaleTimeString() };
-        setMessages(prev => [...prev, userMsg]);
-        setInput('');
-        setLoading(true);
-
-        try {
-            const res = await api.post('/api/chat', { message: msg });
-            const botMsg = { role: 'assistant', content: res.data.response, timestamp: new Date().toLocaleTimeString() };
-            setMessages(prev => [...prev, botMsg]);
-        } catch (err) {
-            console.error(err);
-            const errorMsg = { role: 'assistant', content: "Sorry, I'm having trouble connecting to the neural network. Please check your connection or try again later.", timestamp: new Date().toLocaleTimeString() };
-            setMessages(prev => [...prev, errorMsg]);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const {
+        messages,
+        input, setInput,
+        loading,
+        suggestions,
+        messagesEndRef,
+        handleSend,
+        clearMessages
+    } = useChat();
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -87,7 +50,7 @@ const ChatPage = ({ settings }) => {
                         AI {t.nav_chat || 'Assistant'}
                     </h1>
 
-                    <button onClick={() => setMessages([])} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-zinc-500 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 border border-white/10">
+                    <button onClick={clearMessages} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-zinc-500 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 border border-white/10">
                         <Trash2 className="w-4 h-4" /> Clear_Buffer
                     </button>
                 </motion.div>

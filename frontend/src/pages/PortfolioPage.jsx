@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
     Activity,
@@ -12,55 +11,23 @@ import {
     BarChart3
 } from 'lucide-react';
 import { useTranslation } from '../utils/translations';
-import api from '../utils/api';
+import { usePortfolio } from '../features/portfolio/hooks/usePortfolio';
 
 const PortfolioPage = ({ settings }) => {
     const t = useTranslation(settings);
-    const [activeTab, setActiveTab] = useState('manual');
-    const [displayCurrency, setDisplayCurrency] = useState('KRW');
-
-    const [account, setAccount] = useState(null);
-    const [positions, setPositions] = useState([]);
-    const [exchangeRate, setExchangeRate] = useState(1350);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-
-    const fetchData = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const [accRes, posRes, rateRes] = await Promise.all([
-                api.get('/api/virtual/account'),
-                api.get('/api/virtual/positions'),
-                api.get('/api/exchange-rate')
-            ]);
-            setAccount(accRes.data);
-            setPositions(posRes.data.positions || []);
-            setExchangeRate(rateRes.data.rate);
-        } catch (err) {
-            console.error("Data fetch error:", err);
-            setError("Failed to load portfolio data. Please try again.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        if (activeTab === 'virtual') {
-            fetchData();
-        }
-    }, [activeTab]);
-
-    const formatNumber = (num, decimals = 0) => {
-        if (!num && num !== 0) return '0';
-        return num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-    };
-
-    const getSymbol = () => displayCurrency === 'KRW' ? '₩' : '$';
-
-    const totalValue = activeTab === 'manual'
-        ? 0 // 수동 계산 로직 생략
-        : (positions.reduce((acc, p) => acc + p.total_value_krw, 0) + (account?.balance || 0));
+    const {
+        activeTab, setActiveTab,
+        displayCurrency, setDisplayCurrency,
+        account,
+        positions,
+        exchangeRate,
+        loading,
+        error,
+        totalValue,
+        fetchData,
+        formatNumber,
+        getSymbol
+    } = usePortfolio();
 
     // 로딩 중 표시
     if (loading && !account && activeTab === 'virtual') {

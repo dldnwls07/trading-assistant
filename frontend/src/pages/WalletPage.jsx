@@ -7,9 +7,11 @@ import {
     Cpu
 } from 'lucide-react';
 import { useTranslation } from '../utils/translations';
+import { useWallet } from '../features/wallet/hooks/useWallet';
 
 const WalletPage = ({ settings }) => {
     const t = useTranslation(settings);
+    const { handleConfigureApi, stats } = useWallet();
 
     // 이 페이지는 KIS API 연동이 필요하므로 현재는 안내 메시지를 표시합니다.
 
@@ -76,7 +78,7 @@ const WalletPage = ({ settings }) => {
 
                     <div className="pt-10">
                         <button
-                            onClick={() => alert('설정 메뉴에서 API 키를 입력해주세요.')}
+                            onClick={handleConfigureApi}
                             className="px-10 py-4 bg-yellow-400 text-black rounded-[1.5rem] font-black text-lg shadow-xl shadow-yellow-400/20 hover:bg-yellow-400/90 hover:scale-105 transition-all uppercase tracking-tighter"
                         >
                             Configure API Keys
@@ -88,15 +90,15 @@ const WalletPage = ({ settings }) => {
                 <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-6 opacity-30 grayscale blur-[2px] select-none pointer-events-none">
                     <div className="p-8 rounded-[2rem] border bg-white/5 border-white/10">
                         <p className="text-xs font-black uppercase tracking-widest opacity-50 mb-4 text-zinc-500 font-mono">Total Balance</p>
-                        <p className="text-3xl font-black tracking-tighter text-zinc-100 font-mono">₩125,480,000</p>
+                        <p className="text-3xl font-black tracking-tighter text-zinc-100 font-mono">₩{stats.totalBalance.toLocaleString()}</p>
                     </div>
                     <div className="p-8 rounded-[2rem] border bg-white/5 border-white/10">
                         <p className="text-xs font-black uppercase tracking-widest opacity-50 mb-4 text-zinc-500 font-mono">Daily Profit</p>
-                        <p className="text-3xl font-black tracking-tighter text-yellow-400 font-mono">+₩2,450,000</p>
+                        <p className="text-3xl font-black tracking-tighter text-yellow-400 font-mono">+₩{stats.dailyProfit.toLocaleString()}</p>
                     </div>
                     <div className="p-8 rounded-[2rem] border bg-white/5 border-white/10">
                         <p className="text-xs font-black uppercase tracking-widest opacity-50 mb-4 text-zinc-500 font-mono">Total P/L</p>
-                        <p className="text-3xl font-black tracking-tighter text-yellow-400 font-mono">+12.4%</p>
+                        <p className="text-3xl font-black tracking-tighter text-yellow-400 font-mono">+{stats.totalReturn}%</p>
                     </div>
                 </motion.div>
             </motion.div>

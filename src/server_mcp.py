@@ -12,12 +12,12 @@ from fastapi.security import APIKeyHeader
 
 # 기존 프로젝트 모듈 import
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.agents.analyst import StockAnalyst
+from src.agents.core.analyst import StockAnalyst
 from src.data.collector import MarketDataCollector
-from src.agents.ai_analyzer import AIAnalyzer
-from src.agents.portfolio_analyzer import PortfolioAnalyzer
-from src.agents.screener import StockScreener
-from src.agents.event_calendar import EventCalendar
+from src.agents.analysis.ai_analyzer import AIAnalyzer
+from src.agents.analysis.portfolio_analyzer import PortfolioAnalyzer
+from src.agents.analysis.screener import StockScreener
+from src.agents.calendar.event_calendar import EventCalendar
 from src.data.storage import get_storage
 
 # 로깅 설정

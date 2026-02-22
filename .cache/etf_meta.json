@@ -53,5 +53,35 @@
     "base": "__NONE__",
     "multiplier": 0.0,
     "updated": "2026-02-20T09:47:53.944658"
+  },
+  "IAUM": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-21T00:14:48.415466"
+  },
+  "GDX": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-21T00:15:33.908802"
+  },
+  "005380.KS": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-21T00:15:49.057174"
+  },
+  "MSFT": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-21T00:22:07.118765"
+  },
+  "QQQM": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-21T00:26:57.585959"
+  },
+  "QLD": {
+    "base": "QQQ",
+    "multiplier": 2.0,
+    "updated": "2026-02-21T00:28:43.102684"
   }
 }
