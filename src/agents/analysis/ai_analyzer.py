@@ -115,6 +115,34 @@ class AIAnalyzer:
             "report": "모든 AI 분석 모델 호출에 실패했습니다. API 키 또는 네트워크 연결을 확인해주세요."
         }
 
+    async def generate_dynamic_analysis(self, prompt: str) -> str:
+        """
+        주어진 프롬프트를 바탕으로 자유 형식의 AI 분석을 생성합니다. (Gemini/Groq 지원)
+        """
+        # 1. Gemini 시도
+        if self.gemini_model:
+            try:
+                response = await self.gemini_model.generate_content_async(prompt)
+                return response.text
+            except Exception as e:
+                logger.warning(f"Dynamic Analysis (Gemini) failed: {e}. Trying fallback...")
+        
+        # 2. Groq 폴백 시도
+        if self.groq_key:
+            try:
+                from groq import Groq
+                client = Groq(api_key=self.groq_key)
+                response = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                logger.error(f"Dynamic Analysis (Groq) failed: {e}")
+                
+        return "AI 분석 모델을 사용할 수 없거나 할당량이 초과되었습니다."
+
     def _generate_with_gemini(self, analysis_data: Dict[str, Any], image_bytes: Optional[bytes], lang: str) -> Optional[Dict[str, Any]]:
         """Google Gemini API (Vision + Text)"""
         ticker = analysis_data.get("ticker", "UNKNOWN")

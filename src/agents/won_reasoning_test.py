@@ -9,13 +9,24 @@ def load_model():
     print(f"Loading tokenizer and model: {MODEL_NAME}...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     
-    # Check if a GPU is available, else fallback to CPU
+    from transformers import BitsAndBytesConfig
+    
+    # BitsAndBytes 설정 (4-bit가 Windows에서 안정성이 더 높음)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+    )
+
     device_map = "auto" if torch.cuda.is_available() else "cpu"
-    # Loading in 8-bit or 16-bit can save VRAM if needed. Using bfloat16 for current standard.
+
+    # RTX 4070 Ti Super 최적화 버전
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         device_map=device_map,
-        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+        quantization_config=bnb_config, # 최신 방식 적용
+        low_cpu_mem_usage=True
     )
     print("Model loaded successfully.\n")
     return tokenizer, model

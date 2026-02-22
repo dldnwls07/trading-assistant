@@ -23,5 +23,10 @@ export const analysisApi = {
     getHistory: async (ticker: string, interval: string) => {
         const res = await axios.get(`${API_BASE}/history/${encodeURIComponent(ticker)}?interval=${interval}`, AXIOS_CONFIG);
         return res.data.data;
+    },
+
+    getHybridKRAnalysis: async (ticker: string, news: string[]) => {
+        const res = await axios.post(`${API_BASE}/api/analysis/kr/hybrid`, { ticker, news }, AXIOS_CONFIG);
+        return res.data;
     }
 };

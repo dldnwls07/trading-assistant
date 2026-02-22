@@ -15,8 +15,8 @@ from fredapi import Fred
 import os
 from dotenv import load_dotenv
 from src.agents.analysis.ai_analyzer import AIAnalyzer
-from src.agents.calendar.calendar_fetchers import FredFetcher, TradingEconomicsScraper, FinnhubEarningsFetcher, NaverEarningsScraper
-from src.agents.calendar.event_data import FOMC_SCHEDULES, CALENDAR_TRANS, SCENARIO_TEMPLATES
+from src.agents.event_calendar_api.calendar_fetchers import FredFetcher, TradingEconomicsScraper, FinnhubEarningsFetcher, NaverEarningsScraper
+from src.agents.event_calendar_api.event_data import FOMC_SCHEDULES, CALENDAR_TRANS, SCENARIO_TEMPLATES
 from src.config import settings
 
 load_dotenv()
@@ -124,7 +124,7 @@ class EventCalendar:
             all_events.extend(res)
 
         # 2. 검증된 오버라이드 데이터 추가 (event_data.py)
-        from src.agents.calendar.event_data import VERIFIED_OVERRIDES
+        from src.agents.event_calendar_api.event_data import VERIFIED_OVERRIDES
         for vo in VERIFIED_OVERRIDES:
             v_dt = datetime.strptime(vo['date'], "%Y-%m-%d")
             if start <= v_dt <= end:

@@ -13,7 +13,7 @@ from src.agents.analysis.screener import StockScreener
 from src.agents.execution.executor import OrderExecutor
 from src.data.storage import get_storage
 from src.utils.notifications import send_alert
-from src.agents.calendar.event_calendar import EventCalendar
+from src.agents.event_calendar_api.event_calendar import EventCalendar
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("auto-trader")

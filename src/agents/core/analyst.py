@@ -3,7 +3,7 @@ import numpy as np
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from src.agents.calendar.event_calendar import EventCalendar
+from src.agents.event_calendar_api.event_calendar import EventCalendar
 from src.agents.analysis.strategy_ensemble import StrategyEnsemble
 from src.agents.analysis.ml_predictor import MLPricePredictor
 from src.utils.backtester import Backtester

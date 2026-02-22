@@ -5,7 +5,7 @@ from src.data.parser import FinancialParser
 from src.agents.core.analyst import StockAnalyst
 from src.agents.analysis.ai_analyzer import AIAnalyzer
 from src.agents.chat.chat_assistant import ChatAssistant
-from src.agents.calendar.event_calendar import EventCalendar
+from src.agents.event_calendar_api.event_calendar import EventCalendar
 from src.agents.analysis.portfolio_analyzer import PortfolioAnalyzer
 from src.agents.analysis.screener import StockScreener
 from src.agents.core.chartist import ChartMaster

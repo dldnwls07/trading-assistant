@@ -13,8 +13,10 @@ export function useAnalysis({ initialTicker = '', language = 'ko' }: UseAnalysis
     const [showSuggestions, setShowSuggestions] = useState(false);
 
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+    const [hybridAnalysis, setHybridAnalysis] = useState<any | null>(null);
     const [history, setHistory] = useState<OhlcvData[]>([]);
     const [loading, setLoading] = useState(false);
+    const [hybridLoading, setHybridLoading] = useState(false);
     const [error, setError] = useState<{ message: string; suggestion: string } | null>(null);
     const [selectedInterval, setSelectedInterval] = useState('1d');
 
@@ -125,6 +127,29 @@ export function useAnalysis({ initialTicker = '', language = 'ko' }: UseAnalysis
         return null;
     }, [handleSearch]);
 
+    const handleHybridSearch = useCallback(async () => {
+        if (!ticker) return;
+
+        // 한국 종목 확인 (.KS, .KQ 또는 6자리 숫자)
+        const isKR = ticker.endsWith('.KS') || ticker.endsWith('.KQ') || (/^\d{6}$/.test(ticker));
+        if (!isKR) {
+            alert("하이브리드 분석은 현재 한국 종목(KOSPI/KOSDAQ)만 지원합니다.");
+            return;
+        }
+
+        setHybridLoading(true);
+        try {
+            // 샘플 뉴스 또는 실제 뉴스 가져오기 logic (여기는 간단히 기존 분석 데이터의 뉴스를 활용하거나 빈 목록 전달)
+            const news = ["최신 주요 경영 공시 및 시장 수급 동향", "업황 전망 및 주요 경쟁사 실적 분석"];
+            const result = await analysisApi.getHybridKRAnalysis(ticker, news);
+            setHybridAnalysis(result);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setHybridLoading(false);
+        }
+    }, [ticker]);
+
     return {
         // State
         ticker,
@@ -133,14 +158,17 @@ export function useAnalysis({ initialTicker = '', language = 'ko' }: UseAnalysis
         showSuggestions,
         setShowSuggestions,
         analysis,
+        hybridAnalysis,
         history,
         loading,
+        hybridLoading,
         error,
         selectedInterval,
         setSelectedInterval,
 
         // Actions
         handleSearch,
+        handleHybridSearch,
         handleUpdateHistory,
         handleThemeSelect
     };

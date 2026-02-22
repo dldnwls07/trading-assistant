@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StockChart } from '../features/chart/components/StockChart';
-import { Search, Clock, Eye, ChevronRight, Activity, BarChart3 } from 'lucide-react';
+import { Search, Clock, Eye, ChevronRight, Activity, BarChart3, Zap } from 'lucide-react';
 import { useTranslation } from '../utils/translations';
 
 // 서브 컴포넌트 임포트 (Javascript 컴포넌트들 - 추후 TS 전환 예정)
@@ -63,12 +63,15 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ settings }) => {
         showSuggestions,
         setShowSuggestions,
         analysis,
+        hybridAnalysis,
         history,
         loading,
+        hybridLoading,
         error,
         selectedInterval,
         setSelectedInterval,
         handleSearch,
+        handleHybridSearch,
         handleUpdateHistory,
         handleThemeSelect
     } = useAnalysis({
@@ -193,19 +196,38 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ settings }) => {
                 </div>
 
                 {/* Tab Switcher - Stitch Minimalist Pill */}
-                <div className="flex bg-white/5 backdrop-blur-md p-1 rounded-xl border border-white/10 shadow-lg">
+                <div className="flex items-center gap-4">
+                    {/* Hybrid Analysis Trigger */}
                     <button
-                        onClick={() => setActiveTab('market')}
-                        className={`px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors duration-200 ${activeTab === 'market' ? 'bg-yellow-400 text-black shadow-md shadow-yellow-400/20' : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/5'}`}
+                        onClick={handleHybridSearch}
+                        disabled={hybridLoading}
+                        className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-3 border ${hybridLoading
+                            ? 'bg-zinc-800 text-zinc-600 border-zinc-700 cursor-not-allowed'
+                            : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/20 hover:border-indigo-500/50 shadow-lg shadow-indigo-500/10'
+                            }`}
                     >
-                        Markets
+                        {hybridLoading ? (
+                            <div className="w-3 h-3 border-2 border-indigo-400/20 border-t-indigo-400 rounded-full animate-spin"></div>
+                        ) : (
+                            <Zap size={14} className="fill-indigo-400/20" />
+                        )}
+                        {hybridLoading ? 'ANALYZING...' : 'DEEP_HYBRID_INTEL'}
                     </button>
-                    <button
-                        onClick={() => setActiveTab('themes')}
-                        className={`px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors duration-200 flex items-center gap-2 ${activeTab === 'themes' ? 'bg-yellow-400 text-black shadow-md shadow-yellow-400/20' : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/5'}`}
-                    >
-                        Themes <span className="text-[9px] bg-white/10 px-1.5 py-0.5 rounded text-zinc-400 font-mono">NEW</span>
-                    </button>
+
+                    <div className="flex bg-white/5 backdrop-blur-md p-1 rounded-xl border border-white/10 shadow-lg">
+                        <button
+                            onClick={() => setActiveTab('market')}
+                            className={`px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors duration-200 ${activeTab === 'market' ? 'bg-yellow-400 text-black shadow-md shadow-yellow-400/20' : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/5'}`}
+                        >
+                            Markets
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('themes')}
+                            className={`px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors duration-200 flex items-center gap-2 ${activeTab === 'themes' ? 'bg-yellow-400 text-black shadow-md shadow-yellow-400/20' : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/5'}`}
+                        >
+                            Themes <span className="text-[9px] bg-white/10 px-1.5 py-0.5 rounded text-zinc-400 font-mono">NEW</span>
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -301,6 +323,52 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ settings }) => {
                                 />
                             </motion.div>
 
+                            {/* 3. Hybrid Analysis Result Section */}
+                            <AnimatePresence>
+                                {hybridAnalysis && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 20 }}
+                                        className="rounded-2xl border bg-gradient-to-br from-indigo-500/10 to-purple-500/10 backdrop-blur-md border-indigo-500/20 p-8 shadow-3xl relative overflow-hidden"
+                                    >
+                                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500"></div>
+                                        <div className="flex items-center justify-between mb-8">
+                                            <h3 className="text-xl font-black flex items-center gap-3 tracking-tighter text-zinc-100 italic">
+                                                <Zap className="w-5 h-5 text-indigo-400 group-hover:animate-bounce" />
+                                                HYBRID_MARKET_WISDOM
+                                            </h3>
+                                            <div className="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-[9px] font-black text-indigo-400 tracking-widest uppercase">
+                                                AI_SYNTHESIS_ACTIVE
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                            <div className="space-y-4">
+                                                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                    <ChevronRight size={12} className="text-indigo-400" />
+                                                    EXPERT_SYNTHESIS
+                                                </p>
+                                                <div className="p-6 rounded-xl bg-zinc-950/40 border border-white/5 text-sm leading-relaxed text-zinc-200 font-medium tracking-tight">
+                                                    {hybridAnalysis.hybrid_comment}
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                    <ChevronRight size={12} className="text-indigo-400" />
+                                                    WON_REASONING_PROCESS
+                                                </p>
+                                                <div className="p-6 rounded-xl bg-zinc-950/40 border border-white/5 text-xs text-zinc-400 font-mono leading-relaxed h-[120px] overflow-y-auto custom-scrollbar">
+                                                    <span className="text-indigo-400/80 mr-2">$ LLM::THINKING_STREAM</span>
+                                                    {hybridAnalysis.thought}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
                         </div>
 
                         {/* Right Column: Strategic Setup & Signals (Optimized Density) */}
@@ -320,6 +388,42 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ settings }) => {
                             <motion.div variants={itemVariants}>
                                 <StrategyCard analysis={analysis} isDark={true} />
                             </motion.div>
+
+                            {/* RL Agent Technical Gauge (Hybrid ONLY) */}
+                            {hybridAnalysis && (
+                                <motion.div
+                                    variants={itemVariants}
+                                    className="p-6 rounded-2xl border bg-indigo-500/5 border-indigo-500/20 shadow-xl relative overflow-hidden group"
+                                >
+                                    <div className="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-40 transition-opacity">
+                                        <Activity size={40} className="text-indigo-400" />
+                                    </div>
+                                    <div className="relative z-10">
+                                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.3em] mb-4 flex items-center gap-2">
+                                            <Zap size={12} className="fill-indigo-400" />
+                                            RL_MODEL_PRED (PPO)
+                                        </p>
+                                        <div className="flex items-end justify-between mb-4">
+                                            <div className="text-3xl font-black font-mono tracking-tighter text-zinc-100">
+                                                {hybridAnalysis.rl_action}
+                                            </div>
+                                            <div className="text-xs font-bold text-zinc-500 font-mono">
+                                                CONFIDENCE: <span className="text-indigo-400">{(hybridAnalysis.rl_confidence * 100).toFixed(1)}%</span>
+                                            </div>
+                                        </div>
+                                        {/* Simple Progress Bar as Gauge */}
+                                        <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden border border-white/5">
+                                            <motion.div
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${hybridAnalysis.rl_confidence * 100}%` }}
+                                                className={`h-full ${hybridAnalysis.rl_action === 'BUY' ? 'bg-emerald-500' :
+                                                    hybridAnalysis.rl_action === 'SELL' ? 'bg-rose-500' : 'bg-zinc-500'
+                                                    }`}
+                                            />
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
 
                             {/* 4. Calendar Timeline */}
                             <motion.div variants={itemVariants}>

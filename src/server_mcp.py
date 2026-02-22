@@ -17,7 +17,7 @@ from src.data.collector import MarketDataCollector
 from src.agents.analysis.ai_analyzer import AIAnalyzer
 from src.agents.analysis.portfolio_analyzer import PortfolioAnalyzer
 from src.agents.analysis.screener import StockScreener
-from src.agents.calendar.event_calendar import EventCalendar
+from src.agents.event_calendar_api.event_calendar import EventCalendar
 from src.data.storage import get_storage
 
 # 로깅 설정

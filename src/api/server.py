@@ -23,6 +23,8 @@ from src.domains.portfolio.router import router as portfolio_router
 from src.domains.screener.router import router as screener_router
 from src.domains.backtest.router import router as backtest_router
 from src.domains.tools.router import router as tools_router
+from src.domains.analysis_kr.router import router as analysis_kr_router
+from src.domains.trading_signals.router import router as trading_signals_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -124,6 +126,8 @@ app.include_router(portfolio_router)
 app.include_router(screener_router)
 app.include_router(backtest_router)
 app.include_router(tools_router)
+app.include_router(analysis_kr_router)
+app.include_router(trading_signals_router)
 
 # === 정적 파일 서빙 및 SPA 라우팅 (최하단 배치) ===
 project_root = os.getcwd() 
