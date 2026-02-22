@@ -1,272 +1,126 @@
-# 🚀 AI Trading Assistant v2.0
+# 🚀 Trading Assistant Pro v2.5
 
-**AI 기반 주식 분석 플랫폼 - 웹, 모바일, 확장프로그램 지원**
+**Hybrid AI Trading Platform - Local LLM Reasoning & RL Quantitative Agents**
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-2.0-009688?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react)](https://react.dev/)
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat&logo=python)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![WON-Reasoning](https://img.shields.io/badge/WON--Reasoning-7B-orange?style=flat&logo=ai)](https://huggingface.co/KRX-Data/WON-Reasoning)
+[![RL-Agent](https://img.shields.io/badge/RL--Agent-PPO-brightgreen?style=flat&logo=pytorch)](https://huggingface.co/Adilbai/stock-trading-rl-agent)
 
 ---
 
-## ✨ 주요 기능
+## ⚡ Hybrid AI Architecture (V2.5 New!)
 
-### 📊 종목 분석
-- **다중 시간 프레임 분석** (1m ~ 1y)
-- **30+ 차트 패턴 자동 감지** (헤드앤숄더, 더블바텀 등)
-- **AI 점수 시스템** (0~100점)
-- **매수/매도 타점 제시**
-- **실시간 차트** (TradingView Lightweight Charts)
+Trading Assistant Pro는 단순한 보조 지표를 넘어, **기본적 분석(Reasoning)**과 **기술적 분석(Reinforcement Learning)**을 결합한 하이브리드 지능을 탑재했습니다.
 
-### 💬 AI 채팅
-- **Google Gemini Flash** 통합 (무료!)
-- **자연스러운 대화형 투자 상담**
-- **컨텍스트 인식** (분석 결과 기반 답변)
-- **API 키 없이도 작동** (고급 룰 기반 시스템)
+### 🧠 1. WON-Reasoning (Local Fundamental AI)
+- **Local Power:** RTX 4070 Ti Super 등 로컬 GPU를 활용한 7B 파라미터 추론 모델 구동.
+- **Deep Thought:** `<think>` 과정을 통해 기업 공시, 뉴스, 시장 수급을 한국 전문가의 시각에서 심층 분석.
+- **Privacy:** 민감한 투자 논리를 외부 유출 없이 로컬에서 안전하게 처리.
 
-### 📅 경제 캘린더
-- **FOMC, CPI, 고용지표** 등 주요 일정
-- **기업 실적 발표일**
-- **중요도별 필터링**
-- **D-Day 알림**
+### 🤖 2. RL Trading Agent (Quantitative Technical AI)
+- **PPO Algorithm:** Proximal Policy Optimization 기반의 강화학습 에이전트.
+- **High-Dim Input:** 60일간의 차트 시퀀스와 포트폴리오 상태 등 **3008차원** 데이터를 실시간 연산.
+- **Tactical Signals:** BUY / SELL / HOLD 신호뿐만 아니라 최적의 **Position Size(비중)**까지 산출.
 
-### 💼 포트폴리오 분석
-- **AI 기반 포트폴리오 평가**
-- **리스크 분석**
-- **리밸런싱 제안**
-- **섹터 분산도 분석**
-
-### 🔍 AI 추천 종목
-- **투자 스타일별 맞춤 추천** (공격적/성장/균형/보수적)
-- **급등/급락 종목 모니터링**
-- **실시간 스크리닝**
+### 🔗 3. Smart Synthesis Layer
+- **Unified Insight:** WON-Reasoning의 기본적 통찰과 RL의 기술적 데이터를 Gemini 2.0/Groq가 최종 합성하여 최적의 매매 가이드를 제안.
 
 ---
 
-## 🎯 플랫폼 지원
+## ✨ 핵심 기능
 
-### ✅ 현재 지원
-- **웹 앱** (React + FastAPI)
-- **Streamlit 프로토타입** (내부 테스트용)
-
-### 🚧 개발 예정
-- **모바일 앱** (React Native)
-- **Chrome 확장프로그램**
-- **데스크톱 앱** (Electron)
+- **📈 실시간 차트 & 30+ 패턴 감지:** TradingView 기술 기반의 고성능 차트와 자동 패턴 인식.
+- **🌐 통합 시장 분석:** 한국 시장(.KS/.KQ)과 미국 시장(S&P 500, NASDAQ) 동시 지원.
+- **📅 경제/실적 캘린더:** 주요 거시 지표 및 기업 실적 발표 일정 자동 동기화.
+- **💼 AI 포트폴리오 진단:** 현재 보유 종목의 리스크와 섹터 분산도 자동 리밸런싱 제안.
+- **📱 Modern Glassmorphism UI:** 고도화된 시각화와 애니메이션을 통한 프리미먼 트레이딩 경험.
 
 ---
 
-## 🚀 빠른 시작
+## 🏗️ 시스템 아키텍처
 
-### 1. 설치
-
-```bash
-# 저장소 클론
-git clone https://github.com/yourusername/trading-assistant.git
-cd trading-assistant
-
-# Python 패키지 설치
-pip install -r requirements.txt
-
-# 프론트엔드 패키지 설치
-cd frontend
-npm install
-cd ..
-```
-
-### 2. 환경 변수 설정
-
-`.env` 파일 생성:
-
-```bash
-# Google Gemini API Key (무료, 추천!)
-GEMINI_API_KEY="your-gemini-api-key"
-
-# FRED API Key (거시 경제 지표)
-FRED_API_KEY="your-fred-api-key"
-
-# Hugging Face Token (선택사항)
-HF_TOKEN="your-hf-token"
-```
-
-**API 키 발급:**
-- **Gemini**: https://aistudio.google.com/app/apikey (1분, 무료)
-- **FRED**: https://fred.stlouisfed.org/docs/api/api_key.html (무료)
-
-### 3. 서버 실행
-
-#### 방법 1: 배치 파일 (추천)
-
-**웹 앱 (FastAPI + React):**
-```bash
-start_web.bat
-```
-
-**Streamlit 프로토타입:**
-```bash
-start.bat
-```
-
-#### 방법 2: 수동 실행
-
-**웹 앱:**
-```bash
-# 백엔드
-uvicorn src.api.server:app --reload --host 0.0.0.0 --port 8000
-
-# 프론트엔드 (새 터미널)
-cd frontend
-npm run dev
-```
-
-**Streamlit:**
-```bash
-streamlit run app.py
-```
-
-### 4. 접속
-
-- **웹 앱**: http://localhost:5173
-- **API 문서**: http://localhost:8000/docs
-- **Streamlit**: http://localhost:8501
-
----
-
-## 📚 문서
-
-- **[API Reference v2.0](API_v2_REFERENCE.md)** - 전체 API 엔드포인트
-- **[User Guide](USER_GUIDE.md)** - 사용자 가이드
-- **[API Reference v1.0](API_REFERENCE.md)** - 레거시 API
-
----
-
-## 🏗️ 아키텍처
-
-```
-┌─────────────────────────────────────────┐
-│         프론트엔드 (Frontend)            │
-├─────────────────────────────────────────┤
-│  • React Web App                        │
-│  • React Native (예정)                  │
-│  • Chrome Extension (예정)              │
-│  • Streamlit (테스트용)                 │
-└─────────────────────────────────────────┘
-                    ↓ REST API
-┌─────────────────────────────────────────┐
-│         백엔드 (Backend)                 │
-├─────────────────────────────────────────┤
-│  • FastAPI Server                       │
-│  • WebSocket (실시간)                   │
-│  • CORS 지원                            │
-└─────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────┐
-│         분석 엔진 (Analysis)             │
-├─────────────────────────────────────────┤
-│  • Multi-timeframe Analyzer            │
-│  • Pattern Detector (30+ patterns)     │
-│  • AI Chat (Gemini Flash)              │
-│  • Portfolio Analyzer                  │
-│  • Event Calendar                      │
-│  • Stock Screener                      │
-└─────────────────────────────────────────┘
+```mermaid
+graph TD
+    A[Market Data Provider] --> B[Data Collector]
+    B --> C{Hybrid Analytics Engine}
+    
+    subgraph "Local Intelligence"
+        C --> D[WON-Reasoning 7B]
+        D --> |Fundamental Thought| E[Hybrid Router]
+    end
+    
+    subgraph "Quantitative Intelligence"
+        C --> F[RL Agent - PPO]
+        F --> |Technical Signal| E
+    end
+    
+    E --> G[Gemini/Groq Synthesizer]
+    G --> H[Final Trading Signal / UI]
 ```
 
 ---
 
 ## 🛠️ 기술 스택
 
-### Backend
-- **FastAPI** - 고성능 Python 웹 프레임워크
-- **yfinance** - 주식 데이터 수집
-- **pandas** - 데이터 분석
-- **Google Gemini** - AI 채팅
+### **Backend (Python)**
+- **FastAPI / Uvicorn:** 고성능 비동기 API 서버.
+- **Transformers / BitsAndBytes:** 4-bit 양자화 기반 로컬 LLM 구동.
+- **Stable-Baselines3 / Gymnasium:** 강화학습 모델 추론 및 리서치.
+- **MarketDataCollector:** 다중 소스(yfinance, KIS) 데이터 파이프라인.
 
-### Frontend
-- **React 18** - UI 라이브러리
-- **Vite** - 빌드 도구
-- **Lightweight Charts** - TradingView 차트
-- **Lucide React** - 아이콘
-
-### AI/ML
-- **Google Gemini Flash** - 대화형 AI
-- **Bulkowski 패턴 통계** - 차트 패턴 신뢰도
+### **Frontend (React)**
+- **Vite / TypeScript:** 빠르고 안정적인 개발 환경.
+- **Framer Motion:** 부드러운 UI 전환 및 마이크로 애니메이션.
+- **Lightweight Charts:** 고성능 캔버스 기반 차트 렌더링.
 
 ---
 
-## 📊 API 엔드포인트
+## 📊 API 엔드포인트 (v2.5)
 
-### 종목 분석
-- `GET /analyze/{ticker}` - 종합 분석
-- `GET /history/{ticker}` - 차트 데이터
-- `GET /api/multi-timeframe/{ticker}` - 다중 시간 프레임
+### **하이브리드 분석**
+- `POST /api/analysis/kr/hybrid` - LLM + RL + Synthesis 통합 리포트 생성.
 
-### AI 채팅
-- `POST /api/chat` - AI와 대화
-- `GET /api/chat/suggestions` - 추천 질문
+### **AI 트레이딩 신호**
+- `GET /api/trading/signals/rl/{ticker}` - RL 에이전트 기반 기술적 매매 신호 조회.
 
-### 경제 캘린더
-- `GET /api/calendar` - 이벤트 캘린더
-
-### 포트폴리오
-- `POST /api/portfolio/analyze` - 포트폴리오 분석
-
-### 추천 종목
-- `GET /api/screener/recommendations` - AI 추천
-- `GET /api/screener/top-movers` - 급등/급락
-
-**전체 API 문서**: http://localhost:8000/docs
+### **기본 분석**
+- `GET /analyze/{ticker}` - 전통적 기술 지표 기반 종합 분석.
+- `GET /history/{ticker}` - 시세 데이터 및 차트 이력 기반 데이터.
 
 ---
 
-## 🎨 스크린샷
+## 🚀 시작하기
 
-### 웹 앱 (React)
-- 실시간 차트 + AI 패턴 시각화
-- 수동 그리기 도구 (추세선, 수평선)
-- 다중 시간 프레임 전환
-- 전체화면 모드
+### 📦 1. 저장소 클론 및 의존성 설치
+```bash
+git clone https://github.com/your-repo/trading-assistant-pro.git
+cd trading-assistant-pro
 
-### Streamlit 프로토타입
-- 빠른 프로토타이핑
-- AI 채팅 인터페이스
-- 경제 캘린더
-- 포트폴리오 분석
+# 가상환경 구축 및 패키지 설치
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
 
----
+### ⚙️ 2. 환경 변수 설정 (.env)
+```env
+GEMINI_API_KEY="your_google_ai_key"
+GROQ_API_KEY="your_groq_key"
+HF_TOKEN="your_huggingface_token"
+```
 
-## 🤝 기여
-
-기여를 환영합니다!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📝 라이선스
-
-MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일 참조
+### 🏃 3. 서버 실행
+```bash
+# 통합 실행 (추천)
+python -m uvicorn src.api.server:app --host 0.0.0.0 --port 8000
+```
 
 ---
 
-## 🙏 감사의 말
-
-- **TradingView** - Lightweight Charts 라이브러리
-- **Google** - Gemini AI
-- **Thomas Bulkowski** - 차트 패턴 통계
-- **yfinance** - 주식 데이터 API
+## 🤝 기여 및 문의
+- **Issues:** 버그 리포트 및 기능 제안은 GitHub Issues를 이용해 주세요.
+- **Made with ❤️ by Antigravity AI Team**
 
 ---
-
-## 📞 문의
-
-- **Issues**: GitHub Issues
-- **Email**: your-email@example.com
-
----
-
-**Made with ❤️ by Trading Assistant Team**
+*면책 조항: 이 소프트웨어는 투자 참고용이며, 모든 투자 결정에 대한 책임은 투자 본인에게 있습니다.*
