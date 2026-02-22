@@ -45,7 +45,7 @@ class WONReasoningAdapter(LocalAnalyst):
         prompt = f"다음 기업/시장 상황을 한국 금융 전문가의 시각에서 분석해줘:\n\n{context}"
         
         messages = [
-            {"role": "system", "content": "당신은 한국 금융 시장 분석에 특화된 수석 애널리스트 AI입니다. <think> 태그 안에 추론 과정을 적고, <solution> 태그 안에 최종 분석 결과를 요약하세요."},
+            {"role": "system", "content": "당신은 한국 금융 시장 분석에 특화된 수석 애널리스트 AI입니다. 추론 과정(<think>)은 성능 극대화를 위해 '영어(English)'로 진행해도 좋으나, 최종 분석 결과(<solution>)는 반드시 '현대적인 자연스러운 한글(한자 제외)'로만 작성하세요. 전문적이면서도 가독성 좋은 한국어 리포트를 제공하는 것이 최종 목표입니다."},
             {"role": "user", "content": prompt}
         ]
         

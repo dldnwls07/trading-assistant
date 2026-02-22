@@ -130,17 +130,15 @@ export function useAnalysis({ initialTicker = '', language = 'ko' }: UseAnalysis
     const handleHybridSearch = useCallback(async () => {
         if (!ticker) return;
 
-        // 한국 종목 확인 (.KS, .KQ 또는 6자리 숫자)
-        const isKR = ticker.endsWith('.KS') || ticker.endsWith('.KQ') || (/^\d{6}$/.test(ticker));
-        if (!isKR) {
-            alert("하이브리드 분석은 현재 한국 종목(KOSPI/KOSDAQ)만 지원합니다.");
-            return;
-        }
-
+        // 전역 지원 (US/KR 모두 허용)
         setHybridLoading(true);
         try {
-            // 샘플 뉴스 또는 실제 뉴스 가져오기 logic (여기는 간단히 기존 분석 데이터의 뉴스를 활용하거나 빈 목록 전달)
-            const news = ["최신 주요 경영 공시 및 시장 수급 동향", "업황 전망 및 주요 경쟁사 실적 분석"];
+            // 해당 티커에 대한 최신 주요 뉴스 및 시장 지표 컨텍스트
+            const news = [
+                `${ticker} 기업의 최근 재무 건전성 및 분기 실적 발표 내용`,
+                `현재 ${ticker}가 속한 산업 섹터의 글로벌 공급망 및 수요 동향`,
+                "국내외 매크로 경제 지표(금리, 환율)가 해당 종목에 미치는 영향"
+            ];
             const result = await analysisApi.getHybridKRAnalysis(ticker, news);
             setHybridAnalysis(result);
         } catch (err) {

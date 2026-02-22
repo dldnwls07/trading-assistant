@@ -83,5 +83,10 @@
     "base": "QQQ",
     "multiplier": 2.0,
     "updated": "2026-02-21T00:28:43.102684"
+  },
+  "NOK": {
+    "base": "__NONE__",
+    "multiplier": 0.0,
+    "updated": "2026-02-23T00:28:48.617275"
   }
 }
