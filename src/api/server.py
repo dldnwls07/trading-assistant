@@ -25,6 +25,7 @@ from src.domains.backtest.router import router as backtest_router
 from src.domains.tools.router import router as tools_router
 from src.domains.analysis_kr.router import router as analysis_kr_router
 from src.domains.trading_signals.router import router as trading_signals_router
+from src.domains.agents.router import router as agents_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
     
     from src.api.alert_worker import check_alerts
     from src.agents.execution.auto_trader import AutoTrader
+    from src.agents.execution.virtual_engine import virtual_engine
     
     async def alert_loop():
         logger.info("⏰ AlertWorker loop started.")
@@ -72,12 +74,14 @@ async def lifespan(app: FastAPI):
 
     alert_task = asyncio.create_task(alert_loop())
     trader_task = asyncio.create_task(trader_loop())
+    await virtual_engine.start()
     
     yield
     
     logger.info("🛑 Server is shutting down...")
     alert_task.cancel()
     trader_task.cancel()
+    await virtual_engine.stop()
 
 app = FastAPI(
     title="Trading Assistant API v2.0",
@@ -128,6 +132,7 @@ app.include_router(backtest_router)
 app.include_router(tools_router)
 app.include_router(analysis_kr_router)
 app.include_router(trading_signals_router)
+app.include_router(agents_router)
 
 # === 정적 파일 서빙 및 SPA 라우팅 (최하단 배치) ===
 project_root = os.getcwd() 

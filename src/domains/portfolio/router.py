@@ -32,23 +32,23 @@ async def analyze_portfolio(req: PortfolioRequest, request: Request):
         raise e
 
 @router.get("/api/virtual/account")
-async def get_virtual_account():
+async def get_virtual_account(agent_id: int = None):
     """가상 계좌 잔고 및 정보 조회"""
     try:
-        account_info = await portfolio_service.get_virtual_account_info()
+        account_info = await portfolio_service.get_virtual_account_info(agent_id)
         return account_info
     except Exception as e:
         logger.error(f"Virtual account error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/virtual/positions")
-async def get_virtual_positions():
+async def get_virtual_positions(agent_id: int = None):
     """가상 계좌 보유 종목 조회"""
     try:
         rate_res = await get_exchange_rate()
         usd_krw = rate_res.get("rate", 1350.0)
         
-        positions = await portfolio_service.get_virtual_positions_with_current_prices(usd_krw)
+        positions = await portfolio_service.get_virtual_positions_with_current_prices(usd_krw, agent_id)
         return safe_serialize(positions)
     except Exception as e:
         logger.error(f"Virtual positions error: {e}")

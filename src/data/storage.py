@@ -62,9 +62,22 @@ class Alert(Base):
     triggered_at = Column(Date, nullable=True)
     created_at = Column(Date, default=datetime.now().date())
 
+class CustomAgent(Base):
+    __tablename__ = 'custom_agents'
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    llm_weight = Column(Float, default=0.5)
+    rl_weight = Column(Float, default=0.5)
+    risk_tolerance = Column(String, default='medium')
+    base_llm = Column(String, default='gemini')
+    initial_balance = Column(Float, default=10000000.0)
+    is_active = Column(Integer, default=1)
+    created_at = Column(Date, default=datetime.now().date())
+
 class VirtualAccount(Base):
     __tablename__ = 'virtual_accounts'
     id = Column(Integer, primary_key=True)
+    agent_id = Column(Integer, ForeignKey('custom_agents.id'), nullable=True)
     balance = Column(Float, default=10000000.0)
     currency = Column(String, default='KRW')
     updated_at = Column(Date, default=datetime.now().date())
@@ -72,6 +85,7 @@ class VirtualAccount(Base):
 class VirtualPosition(Base):
     __tablename__ = 'virtual_positions'
     id = Column(Integer, primary_key=True)
+    agent_id = Column(Integer, ForeignKey('custom_agents.id'), nullable=True)
     ticker = Column(String, ForeignKey('stocks.ticker'))
     quantity = Column(Integer, default=0)
     avg_price = Column(Float, default=0.0)
@@ -80,6 +94,7 @@ class VirtualPosition(Base):
 class VirtualTrade(Base):
     __tablename__ = 'virtual_trades'
     id = Column(Integer, primary_key=True)
+    agent_id = Column(Integer, ForeignKey('custom_agents.id'), nullable=True)
     ticker = Column(String)
     side = Column(String)
     quantity = Column(Integer)
@@ -316,39 +331,44 @@ class DataStorage:
             )
             await session.commit()
 
-    async def get_virtual_balance(self) -> float:
+    async def get_virtual_balance(self, agent_id: Optional[int] = None) -> float:
         async with self.get_session() as session:
-            result = await session.execute(select(VirtualAccount))
+            result = await session.execute(select(VirtualAccount).filter_by(agent_id=agent_id))
             acc = result.scalar_one_or_none()
             if not acc:
-                acc = VirtualAccount(balance=10000000.0)
+                initial_amt = 10000000.0
+                if agent_id:
+                    ag_res = await session.execute(select(CustomAgent).filter_by(id=agent_id))
+                    ag = ag_res.scalar_one_or_none()
+                    if ag: initial_amt = ag.initial_balance
+                acc = VirtualAccount(agent_id=agent_id, balance=initial_amt)
                 session.add(acc)
                 await session.flush()
             return acc.balance
 
-    async def update_virtual_balance(self, amount: float):
+    async def update_virtual_balance(self, amount: float, agent_id: Optional[int] = None):
         async with self.get_session() as session:
-            result = await session.execute(select(VirtualAccount))
+            result = await session.execute(select(VirtualAccount).filter_by(agent_id=agent_id))
             acc = result.scalar_one_or_none()
             if not acc:
-                acc = VirtualAccount(balance=10000000.0)
+                acc = VirtualAccount(agent_id=agent_id, balance=10000000.0)
                 session.add(acc)
             acc.balance += amount
             acc.updated_at = datetime.now().date()
 
-    async def get_virtual_positions(self) -> List[Dict]:
+    async def get_virtual_positions(self, agent_id: Optional[int] = None) -> List[Dict]:
         async with self.get_session() as session:
-            result = await session.execute(select(VirtualPosition).filter(VirtualPosition.quantity > 0))
+            result = await session.execute(select(VirtualPosition).filter(VirtualPosition.quantity > 0, VirtualPosition.agent_id == agent_id))
             return [{"ticker": p.ticker, "quantity": p.quantity, "avg_price": p.avg_price} for p in result.scalars().all()]
 
-    async def update_virtual_position(self, ticker: str, quantity: int, price: float, side: str):
+    async def update_virtual_position(self, ticker: str, quantity: int, price: float, side: str, agent_id: Optional[int] = None):
         async with self.get_session() as session:
-            result = await session.execute(select(VirtualPosition).filter_by(ticker=ticker))
+            result = await session.execute(select(VirtualPosition).filter_by(ticker=ticker, agent_id=agent_id))
             pos = result.scalar_one_or_none()
             
             if side == 'BUY':
                 if not pos:
-                    pos = VirtualPosition(ticker=ticker, quantity=quantity, avg_price=price)
+                    pos = VirtualPosition(agent_id=agent_id, ticker=ticker, quantity=quantity, avg_price=price)
                     session.add(pos)
                 else:
                     new_total = pos.quantity + quantity
@@ -359,6 +379,48 @@ class DataStorage:
                     pos.quantity -= quantity
             
             pos.updated_at = datetime.now().date()
+            await session.commit()
+
+    # --- 커스텀 에이전트(Custom Agent) 관련 ---
+    async def create_custom_agent(self, name: str, llm_weight: float, rl_weight: float, risk_tolerance: str, base_llm: str, initial_balance: float = 10000000.0) -> CustomAgent:
+        async with self.get_session() as session:
+            agent = CustomAgent(
+                name=name, llm_weight=llm_weight, rl_weight=rl_weight,
+                risk_tolerance=risk_tolerance, base_llm=base_llm, initial_balance=initial_balance
+            )
+            session.add(agent)
+            await session.commit()
+            return agent
+
+    async def get_custom_agents(self, active_only: bool = False) -> List[CustomAgent]:
+        async with self.get_session() as session:
+            stmt = select(CustomAgent)
+            if active_only:
+                stmt = stmt.filter_by(is_active=1)
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
+
+    async def get_custom_agent(self, agent_id: int) -> Optional[CustomAgent]:
+        async with self.get_session() as session:
+            result = await session.execute(select(CustomAgent).filter_by(id=agent_id))
+            return result.scalar_one_or_none()
+
+    async def update_custom_agent_status(self, agent_id: int, is_active: int):
+        async with self.get_session() as session:
+            result = await session.execute(select(CustomAgent).filter_by(id=agent_id))
+            agent = result.scalar_one_or_none()
+            if agent:
+                agent.is_active = is_active
+                await session.commit()
+                
+    async def delete_custom_agent(self, agent_id: int):
+        async with self.get_session() as session:
+            # Delete associated virtual trades, positions, and account
+            await session.execute(delete(VirtualTrade).where(VirtualTrade.agent_id == agent_id))
+            await session.execute(delete(VirtualPosition).where(VirtualPosition.agent_id == agent_id))
+            await session.execute(delete(VirtualAccount).where(VirtualAccount.agent_id == agent_id))
+            # Delete agent
+            await session.execute(delete(CustomAgent).where(CustomAgent.id == agent_id))
             await session.commit()
 
     @classmethod

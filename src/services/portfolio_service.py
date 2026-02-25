@@ -13,10 +13,16 @@ class PortfolioService:
         """포트폴리오 AI 분석 수행"""
         return self.portfolio_analyzer.analyze_portfolio(holdings)
 
-    async def get_virtual_account_info(self) -> Dict[str, Any]:
+    async def get_virtual_account_info(self, agent_id: int = None) -> Dict[str, Any]:
         """가상 계좌 잔고 및 수익률 정보 계산"""
-        balance = await self.storage.get_virtual_balance()
+        balance = await self.storage.get_virtual_balance(agent_id)
+        
         initial_balance = 10000000.0
+        if agent_id:
+            agent = await self.storage.get_custom_agent(agent_id)
+            if agent:
+                initial_balance = agent.initial_balance
+                
         profit = balance - initial_balance
         
         return {
@@ -24,12 +30,12 @@ class PortfolioService:
             "currency": "KRW",
             "initial_balance": initial_balance,
             "total_profit": profit,
-            "profit_rate": (profit / initial_balance) * 100
+            "profit_rate": (profit / initial_balance) * 100 if initial_balance > 0 else 0
         }
 
-    async def get_virtual_positions_with_current_prices(self, usd_krw_rate: float) -> List[Dict[str, Any]]:
+    async def get_virtual_positions_with_current_prices(self, usd_krw_rate: float, agent_id: int = None) -> List[Dict[str, Any]]:
         """가상 계좌 보유 종목과 현재가 및 수익률 명세 계산"""
-        positions = await self.storage.get_virtual_positions()
+        positions = await self.storage.get_virtual_positions(agent_id)
         
         processed_positions = []
         for pos in positions:

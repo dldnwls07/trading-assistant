@@ -12,6 +12,7 @@ import EarningsPage from './pages/EarningsPage';
 import PortfolioPage from './pages/PortfolioPage';
 import WalletPage from './pages/WalletPage';
 import ScreenerPage from './pages/ScreenerPage';
+import LeaderboardPage from './pages/LeaderboardPage';
 
 const pageTransition = {
   initial: { opacity: 0, y: 10 },
@@ -31,14 +32,15 @@ const AnimatedRoutes = ({ settings }) => {
             </motion.div>
           } />
         ))}
-        {['chat', 'calendar', 'earnings', 'portfolio', 'wallet', 'screener'].map(page => {
+        {['chat', 'calendar', 'earnings', 'portfolio', 'wallet', 'screener', 'leaderboard'].map(page => {
           const components = {
             chat: ChatPage,
             calendar: CalendarPage,
             earnings: EarningsPage,
             portfolio: PortfolioPage,
             wallet: WalletPage,
-            screener: ScreenerPage
+            screener: ScreenerPage,
+            leaderboard: LeaderboardPage
           };
           const Component = components[page];
           return (

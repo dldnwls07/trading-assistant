@@ -1,5 +1,5 @@
 import { useLocation, Link } from 'react-router-dom';
-import { BarChart2, Calendar, PieChart, Search, TrendingUp, Wallet, X, Menu, Settings, Bell } from 'lucide-react';
+import { BarChart2, Calendar, PieChart, Search, TrendingUp, Wallet, X, Menu, Settings, Bell, Trophy } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from '../utils/translations';
 
@@ -14,6 +14,7 @@ const Navigation = ({ settings, onOpenSettings }) => {
         { path: '/calendar', label: t.nav_calendar, icon: Calendar },
         { path: '/earnings', label: t.nav_earnings, icon: TrendingUp },
         { path: '/portfolio', label: t.nav_portfolio, icon: PieChart },
+        { path: '/leaderboard', label: "AI 리그", icon: Trophy },
         { path: '/wallet', label: t.nav_wallet, icon: Wallet },
         { path: '/screener', label: t.nav_screener, icon: Search },
     ];

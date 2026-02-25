@@ -10,14 +10,30 @@ export function usePortfolio() {
     const [exchangeRate, setExchangeRate] = useState(1350);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [agents, setAgents] = useState([]);
+    const [selectedAgentId, setSelectedAgentId] = useState('');
 
     const fetchData = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
+            // First fetch agents if not loaded
+            let currentAgents = agents;
+            if (currentAgents.length === 0) {
+                const agentsRes = await fetch('http://localhost:8000/api/agents');
+                const agentsData = await agentsRes.json();
+                if (agentsData.status === 'success') {
+                    currentAgents = agentsData.agents;
+                    setAgents(currentAgents);
+                }
+            }
+
+            // Allow fetching the main virtual account or a specific agent's virtual account
+            const agentIdParam = selectedAgentId === '' ? null : Number(selectedAgentId);
+
             const [accData, posData, rateData] = await Promise.all([
-                portfolioApi.getAccount(),
-                portfolioApi.getPositions(),
+                portfolioApi.getAccount(agentIdParam),
+                portfolioApi.getPositions(agentIdParam),
                 portfolioApi.getExchangeRate()
             ]);
             setAccount(accData);
@@ -29,7 +45,7 @@ export function usePortfolio() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [selectedAgentId, agents]);
 
     useEffect(() => {
         if (activeTab === 'virtual') {
@@ -59,6 +75,9 @@ export function usePortfolio() {
         exchangeRate,
         loading,
         error,
+        agents,
+        selectedAgentId,
+        setSelectedAgentId,
 
         // Computed
         totalValue,

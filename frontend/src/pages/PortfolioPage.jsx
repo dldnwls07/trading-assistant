@@ -26,7 +26,10 @@ const PortfolioPage = ({ settings }) => {
         totalValue,
         fetchData,
         formatNumber,
-        getSymbol
+        getSymbol,
+        agents,
+        selectedAgentId,
+        setSelectedAgentId
     } = usePortfolio();
 
     // 로딩 중 표시
@@ -71,6 +74,23 @@ const PortfolioPage = ({ settings }) => {
                         </div>
                     </div>
                 </motion.div>
+
+                {activeTab === 'virtual' && agents.length > 0 && (
+                    <motion.div variants={itemVariants} className="flex justify-end">
+                        <select
+                            value={selectedAgentId}
+                            onChange={(e) => setSelectedAgentId(e.target.value)}
+                            className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                        >
+                            <option value="">전체 가상 계좌 (Total)</option>
+                            {agents.map(agent => (
+                                <option key={agent.agent_id} value={agent.agent_id}>
+                                    {agent.name} (LLM {Math.round(agent.llm_weight * 100)}%)
+                                </option>
+                            ))}
+                        </select>
+                    </motion.div>
+                )}
 
                 <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="p-6 rounded-3xl shadow-xl border bg-white/5 backdrop-blur-md border-white/10 hover:scale-[1.02] transition-transform">
