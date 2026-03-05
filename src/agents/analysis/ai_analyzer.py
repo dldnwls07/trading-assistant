@@ -81,39 +81,87 @@ class AIAnalyzer:
         
         return {"label": "unknown", "score": 0.0}
     
-    def generate_report(self, analysis_data: Dict[str, Any], image_bytes: Optional[bytes] = None, lang: str = "ko") -> Dict[str, Any]:
+    async def generate_report(self, analysis_data: Dict[str, Any], image_bytes: Optional[bytes] = None, lang: str = "ko") -> Dict[str, Any]:
         """
-        LLM에 모든 원본 지표 데이터를 전달하여 점수, 신호, 리포트를 생성하도록 요청합니다.
+        종목 코드에 따라 맞춤형 모델(한국주식=KRX, 미국주식=Qwen/Groq)로 라우팅하여 리포트를 생성합니다.
+        우선순위: KRX 로컬(한국어) → Qwen3-32B(Groq) → Llama(Groq) → Gemini(할당량)
         Returns: Dict containing 'score', 'signal', 'report'
         """
+        import asyncio
+        ticker = analysis_data.get("ticker", "UNKNOWN")
+        is_korean = str(ticker).endswith(".KS") or str(ticker).endswith(".KQ") or str(ticker).isdigit()
+
         try:
-            # 1. Try Gemini API (Vision capable)
-            if self.gemini_key and self.gemini_model:
+            # 1. 한국 주식 (KRX 로컬 모델 라우팅)
+            if is_korean:
+                logger.info(f"🇰🇷 Korean stock detected ({ticker}). Routing to KRX-Data/WON-Reasoning (Local Model)...")
                 try:
-                    report_dict = self._generate_with_gemini(analysis_data, image_bytes, lang)
+                    from src.domains.analysis_kr.infrastructure.won_reasoning_adapter import WONReasoningAdapter
+                    
+                    if getattr(self, '_krx_adapter', None) is None:
+                        logger.info("Initializing KRX Adapter locally...")
+                        self._krx_adapter = WONReasoningAdapter()
+                        
+                    context = self._build_korean_context(analysis_data)
+                    result = await self._krx_adapter.analyze(ticker, context)
+                    
+                    report_text = result.solution or result.thought
+                    
+                    return {
+                        "score": 50,
+                        "signal": "HOLD",  
+                        "report": f"🇰🇷 **[KRX 특화 심층 분석]**\n\n{report_text}"
+                    }
+                except Exception as e:
+                    logger.warning(f"KRX 로컬 모델 분석 실패, Qwen(Groq)으로 폴백 시도합니다: {e}")
+
+            # 2. Qwen3-32B (Groq API) - 한국어 지원 우수한 메인 모델
+            if self.groq_key:
+                try:
+                    logger.info(f"🧠 Routing to Qwen3-32B (Groq) for {ticker}...")
+                    report_dict = await asyncio.to_thread(self._generate_with_qwen, analysis_data, lang)
                     if report_dict:
                         return report_dict
                 except Exception as e:
-                    logger.warning(f"Gemini generation failed: {e}")
-            
-            # 2. Try Groq API (Text only fallback)
-            if self.groq_key:
-                report_dict = self._generate_with_groq_simple(analysis_data, lang)
-                if report_dict:
-                    return report_dict
+                    logger.warning(f"Qwen generation failed for {ticker}: {e}")
 
-            # 3. All APIs failed
-            logger.warning("All AI APIs (Gemini, Groq) failed or unavailable. Returning default response.")
+            # 3. Llama (Groq API) - 영어 폴백
+            if self.groq_key:
+                try:
+                    logger.info(f"🦙 Falling back to Groq Llama for {ticker}...")
+                    report_dict = await asyncio.to_thread(self._generate_with_groq_simple, analysis_data, lang)
+                    if report_dict:
+                        return report_dict
+                except Exception as e:
+                    logger.warning(f"Groq Llama fallback failed for {ticker}: {e}")
+
+            # 4. Gemini API (할당량 있을 때)
+            if self.gemini_key and self.gemini_model:
+                try:
+                    logger.info(f"✨ Trying Gemini fallback for {ticker}...")
+                    report_dict = await asyncio.to_thread(self._generate_with_gemini, analysis_data, image_bytes, lang)
+                    if report_dict:
+                        return report_dict
+                except Exception as e:
+                    logger.warning(f"Gemini generation failed for {ticker}: {e}")
+
+            logger.warning(f"All AI APIs (KRX, Qwen, Llama, Gemini) failed or unavailable for {ticker}.")
 
         except Exception as e:
-            logger.error(f"AI Report generation failed: {e}", exc_info=True)
+            logger.error(f"AI Report generation failed for {ticker}: {e}", exc_info=True)
         
-        # If all APIs fail, return a default error Dict
         return {
             "score": 50,
             "signal": "ERROR",
-            "report": "모든 AI 분석 모델 호출에 실패했습니다. API 키 또는 네트워크 연결을 확인해주세요."
+            "report": "모든 AI 분석 모델 호출에 실패했습니다. API 키 문제이거나 엔진 할당량 초과일 수 있습니다."
         }
+
+    def _build_korean_context(self, analysis_data: Dict[str, Any]) -> str:
+        """KRX 로컬 모델을 위한 컨텍스트(데이터) 정리"""
+        med_indicators = analysis_data.get("medium_term_indicators", {})
+        lines = ["=== 기술적 지표 현재 상태 ==="]
+        self._append_indicators(lines, med_indicators)
+        return "\n".join(lines)
 
     async def generate_dynamic_analysis(self, prompt: str) -> str:
         """
@@ -127,19 +175,19 @@ class AIAnalyzer:
             except Exception as e:
                 logger.warning(f"Dynamic Analysis (Gemini) failed: {e}. Trying fallback...")
         
-        # 2. Groq 폴백 시도
+        # 2. Groq (Qwen) 폴백 시도
         if self.groq_key:
             try:
                 from groq import Groq
                 client = Groq(api_key=self.groq_key)
                 response = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="qwen-2.5-32b",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.7
                 )
                 return response.choices[0].message.content
             except Exception as e:
-                logger.error(f"Dynamic Analysis (Groq) failed: {e}")
+                logger.error(f"Dynamic Analysis (Groq/Qwen) failed: {e}")
                 
         return "AI 분석 모델을 사용할 수 없거나 할당량이 초과되었습니다."
 
@@ -225,36 +273,101 @@ Output Requirements:
             
             return None
 
-    def _generate_with_groq_simple(self, analysis_data: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
-        """Groq API (Llama-3) 폴백 — Llama는 한국어가 약하므로 영어로 생성"""
-        logger.info("Attempting AI report generation with Groq (English-only fallback)...")
+    def _generate_with_qwen(self, analysis_data: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
+        """Groq API (Qwen3-32B) — 한국어 리포트 생성 메인 모델"""
+        logger.info("🧠 Attempting AI report generation with Qwen3-32B (Korean-capable)...")
         ticker = analysis_data.get("ticker", "UNKNOWN")
         
-        # 중기 지표를 우선 사용하되, 단/장기 지표도 보조적으로 포함
         med_indicators = analysis_data.get("medium_term_indicators", {})
         short_indicators = analysis_data.get("short_term_indicators", {})
         long_indicators = analysis_data.get("long_term_indicators", {})
         
         if not med_indicators:
-            # 데이터 파이프라인 문제 (raw_indicators 경로 불일치 등)일 가능성이 높음
-            logger.warning(f"Groq 폴백 취소: {ticker}의 medium_term_indicators가 비어있음. analysis_data 키: {list(analysis_data.keys())}")
+            logger.warning(f"Qwen 취소: {ticker}의 medium_term_indicators가 비어있음.")
             return None
 
-        # 다중 타임프레임 지표 요약 구성
+        summary_lines = [f"종목: {ticker}", "", "=== 중기 (일봉) ==="]
+        self._append_indicators(summary_lines, med_indicators)
+        if short_indicators:
+            summary_lines.append("\n=== 단기 (시간봉) ===")
+            self._append_indicators(summary_lines, short_indicators)
+        if long_indicators:
+            summary_lines.append("\n=== 장기 (주봉) ===")
+            self._append_indicators(summary_lines, long_indicators)
+
+        prompt_text = "\n".join(summary_lines)
+        lang_instruction = "한국어로 작성하세요." if lang == "ko" else f"Write in {lang}."
+
+        prompt = f"""당신은 전문 트레이딩 애널리스트입니다. 아래 {ticker}의 다중 시간 프레임 기술적 지표를 분석하세요.
+{lang_instruction}
+
+JSON 형식으로 응답하세요. 키: "score" (0-100), "signal" (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL), "report" (문자열).
+
+"report"는 반드시 아래 형식을 사용하세요:
+
+📊 추세 분석
+(이동평균선 기반 추세 방향. SMA50/200 위치. 골든/데드크로스 상태.)
+
+⚡ 모멘텀 & 오실레이터
+(RSI 과매수/과매도. MACD 크로스오버. 스토캐스틱, ADX.)
+
+🎯 핵심 지지/저항
+(주요 지지/저항 가격대. 볼린저 밴드. 주목할 가격 구간.)
+
+💡 전략 & 액션
+(구체적 매매 전략. 진입/손절/익절가. 리스크 수준.)
+
+각 섹션은 1-2문장. 마크다운 금지. 이모지 헤더 포함 평문.
+반드시 유효한 JSON만 응답하세요.
+
+{prompt_text}
+"""
+        try:
+            from groq import Groq
+            client = Groq(api_key=self.groq_key)
+            
+            response = client.chat.completions.create(
+                model="qwen-2.5-32b",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                response_format={"type": "json_object"}
+            )
+            
+            content = response.choices[0].message.content.strip()
+            logger.info(f"Qwen raw response: {content[:500]}")
+            
+            parsed_content = json.loads(content)
+            logger.info(f"✅ Qwen parsed OK: score={parsed_content.get('score')}, signal={parsed_content.get('signal')}")
+            return parsed_content
+                
+        except Exception as e:
+            logger.error(f"Qwen API failed: {e}", exc_info=True)
+            return None
+
+    def _generate_with_groq_simple(self, analysis_data: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
+        """Groq API (Llama-3.3-70b) 폴백 — 한국어가 약하므로 영어로 생성"""
+        logger.info("Attempting AI report generation with Groq Llama (English-only fallback)...")
+        ticker = analysis_data.get("ticker", "UNKNOWN")
+        
+        med_indicators = analysis_data.get("medium_term_indicators", {})
+        short_indicators = analysis_data.get("short_term_indicators", {})
+        long_indicators = analysis_data.get("long_term_indicators", {})
+        
+        if not med_indicators:
+            logger.warning(f"Groq 폴백 취소: {ticker}의 medium_term_indicators가 비어있음.")
+            return None
+
         summary_lines = [f"Stock: {ticker}", "", "=== Medium-Term (Daily) ==="]
         self._append_indicators(summary_lines, med_indicators)
-        
         if short_indicators:
             summary_lines.append("\n=== Short-Term (Hourly) ===")
             self._append_indicators(summary_lines, short_indicators)
-        
         if long_indicators:
             summary_lines.append("\n=== Long-Term (Weekly) ===")
             self._append_indicators(summary_lines, long_indicators)
 
         prompt_text = "\n".join(summary_lines)
 
-        # Llama 모델은 한국어 생성 능력이 약하므로 항상 영어로 생성
         prompt = f"""You are an expert trading analyst. Analyze the following multi-timeframe technical indicators for {ticker}.
 
 Provide a JSON object with keys "score" (0-100), "signal" (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL), and "report" (string).
@@ -290,26 +403,20 @@ Reply with ONLY valid JSON.
             )
             
             content = response.choices[0].message.content.strip()
-            logger.info(f"Groq raw response: {content[:500]}")
+            logger.info(f"Groq Llama raw response: {content[:500]}")
             
-            try:
-                parsed_content = json.loads(content)
-                logger.info(f"✅ Groq parsed successfully: score={parsed_content.get('score')}, signal={parsed_content.get('signal')}")
-                
-                # 폴백 모델 사용 안내 + 원본 영어 리포트를 합쳐서 반환
-                original_report = parsed_content.get("report", "")
-                parsed_content["report"] = (
-                    "⚠️ [Gemini 할당량 초과로 Groq 폴백 모델 사용 — 영문 분석]\n\n"
-                    f"{original_report}"
-                )
-                return parsed_content
-            except json.JSONDecodeError as jde:
-                logger.error(f"Groq returned invalid JSON: {content[:200]}")
-                logger.error(f"JSON decode error: {jde}")
-                return None
+            parsed_content = json.loads(content)
+            logger.info(f"✅ Groq Llama parsed OK: score={parsed_content.get('score')}, signal={parsed_content.get('signal')}")
+            
+            original_report = parsed_content.get("report", "")
+            parsed_content["report"] = (
+                "⚠️ [Qwen 폴백 → Llama 영문 분석]\n\n"
+                f"{original_report}"
+            )
+            return parsed_content
                 
         except Exception as e:
-            logger.error(f"Groq API fallback failed: {e}", exc_info=True)
+            logger.error(f"Groq Llama fallback failed: {e}", exc_info=True)
             return None
     
     def _append_indicators(self, lines: list, indicators: dict) -> None:

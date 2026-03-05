@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 from src.data.storage import get_storage
 from src.data.parser import FinancialParser
 from src.agents.analysis.ai_analyzer import get_stock_events
+from src.agents.event_calendar_api.event_calendar import EventCalendar
 
 class IntegrationService:
     """
@@ -38,6 +39,7 @@ class IntegrationService:
         self.ai_analyzer = ai_analyzer or AIAnalyzer()
         self.storage = storage or get_storage()
         self.parser = parser or FinancialParser()
+        self.event_calendar = EventCalendar()
         
     async def run_comprehensive_analysis(self, ticker: str) -> Dict[str, Any]:
         """한 종목에 대한 모든 관점의 종합 분석 실행"""
@@ -70,9 +72,10 @@ class IntegrationService:
             ml_task = asyncio.to_thread(self.ml_predictor.predict_next, daily_df, ticker)
             events_task = asyncio.to_thread(get_stock_events, ticker)
             multi_res_task = self.multi_analyzer.analyze_all_timeframes(ticker)
+            macro_events_task = self.event_calendar.get_calendar_v2(tickers=[ticker])
             
-            ml_res, events, multi_res, index_df = await asyncio.gather(
-                ml_task, events_task, multi_res_task, index_task
+            ml_res, events, multi_res, index_df, macro_data = await asyncio.gather(
+                ml_task, events_task, multi_res_task, index_task, macro_events_task
             )
             
             # VIX 값은 multi_res에서 가져옴 (multi_timeframe에서 이미 수집)
@@ -81,11 +84,21 @@ class IntegrationService:
             # 상관계수 계산 (종목 vs 나스닥)
             correlation = self._calculate_correlation(daily_df, index_df)
             
-            # 4. 결과 통합 및 가공
+            # 4. 결과 통합 및 가공 (프론트엔드 호환 포맷 매핑)
+            formatted_events = {
+                "earnings": events.get("earnings_date", "AWAITING_SCHEDULE"),
+                "sector": events.get("sector", "MAPPING_CORRELATIONS..."),
+                "industry": events.get("industry"),
+                "market_cap": events.get("market_cap"),
+                "dividend_yield": events.get("dividend_yield"),
+                "macro_events": macro_data.get("events", []),
+                "macro_summary": macro_data.get("summary", {}),
+            }
+
             final_result = {
                 **multi_res,
                 "ml_prediction": ml_res,
-                "events": events or {},
+                "events": formatted_events,
                 "fundamental_summary": multi_res.get("medium_term", {}).get("full_analysis", {}).get("fundamental", {}),
                 "timestamp": datetime.now().isoformat(),
                 "status": "success",

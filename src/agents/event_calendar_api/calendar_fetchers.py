@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 from bs4 import BeautifulSoup
 import os
@@ -10,7 +10,7 @@ from fredapi import Fred
 logger = logging.getLogger(__name__)
 
 class BaseFetcher:
-    def fetch(self, start: datetime, end: datetime, lang: str = "ko") -> List[Dict]:
+    def fetch(self, start: datetime, end: datetime, lang: str = "ko", tickers: Optional[List[str]] = None) -> List[Dict]:
         raise NotImplementedError
 
 class FredFetcher(BaseFetcher):
@@ -26,7 +26,7 @@ class FredFetcher(BaseFetcher):
             2: {"cat": "production", "imp": "medium", "name_ko": "산업생산 지수"},
         }
 
-    def fetch(self, start: datetime, end: datetime, lang: str = "ko") -> List[Dict]:
+    def fetch(self, start: datetime, end: datetime, lang: str = "ko", tickers: Optional[List[str]] = None) -> List[Dict]:
         if not self.fred:
             logger.warning("FRED API key missing. Skipping FRED fetch.")
             return []
@@ -61,11 +61,17 @@ class FredFetcher(BaseFetcher):
                     events.append({
                         "date": release_date.strftime("%Y-%m-%d"),
                         "time": "22:30", # Default time for US indicators
+                        "datetime": f"{release_date.strftime('%Y-%m-%d')}T22:30:00",
                         "country": "US",
                         "type": "Indicator",
                         "title": f"{title} (발표)",
+                        "description": f"FRED 지표: {title}",
                         "importance": config["imp"],
+                        "impact": "해당 지표 발표에 따른 변동성 유의",
                         "category": config["cat"],
+                        "actual": "-",
+                        "forecast": "-",
+                        "previous": "-",
                         "source": "FRED"
                     })
             except Exception as e:
@@ -86,7 +92,7 @@ class TradingEconomicsScraper(BaseFetcher):
             "Upgrade-Insecure-Requests": "1"
         }
 
-    def fetch(self, start: datetime, end: datetime, lang: str = "ko") -> List[Dict]:
+    def fetch(self, start: datetime, end: datetime, lang: str = "ko", tickers: Optional[List[str]] = None) -> List[Dict]:
         # Trading Economics는 보통 현재 주간 일정을 보여주므로, 날짜 범위를 조정하여 요청할 로직이 필요할 수 있음
         # 여기서는 간단하게 기본 페이지를 파싱하는 예시를 구성 (실제 구현 시 URL 파라미터 활용 필요)
         events = []
@@ -146,16 +152,22 @@ class TradingEconomicsScraper(BaseFetcher):
                     elif "pmi" in event_title.lower() or "employment" in event_title.lower():
                         importance = "high"
                     
+                    # Normalize time format
+                    time_fmt = time_val if ":" in time_val else "00:00"
                     events.append({
                         "date": date_str,
-                        "time": time_val,
+                        "time": time_val if time_val else "00:00",
+                        "datetime": f"{date_str}T{time_fmt}:00",
                         "country": country,
                         "type": "Indicator",
                         "title": event_title,
+                        "description": f"TradingEconomics 지표: {event_title}",
                         "importance": importance,
-                        "actual": actual,
-                        "forecast": forecast,
-                        "previous": previous,
+                        "impact": "해당 지표 발표에 따른 변동성 유의",
+                        "category": "macro",
+                        "actual": actual if actual else "-",
+                        "forecast": forecast if forecast else "-",
+                        "previous": previous if previous else "-",
                         "source": "TradingEconomics"
                     })
         except Exception as e:
@@ -172,12 +184,16 @@ class NaverEarningsScraper(BaseFetcher):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
 
-    def fetch(self, start: datetime, end: datetime, lang: str = "ko") -> List[Dict]:
+    def fetch(self, start: datetime, end: datetime, lang: str = "ko", tickers: Optional[List[str]] = None) -> List[Dict]:
         """
         네이버 금융에서 시가총액 상위 종목들을 가져온 뒤 yfinance로 실적 발표일 수집
         """
         import yfinance as yf
         import concurrent.futures
+        
+        if tickers and len(tickers) > 0:
+            # 특정 종목 요청 시 글로벌 시총 상위 40개 조회를 건너뜀 (성능 최적화)
+            return []
         
         events = []
         try:
@@ -272,13 +288,19 @@ class NaverEarningsScraper(BaseFetcher):
             if ir_target_dt and (start <= ir_target_dt <= end):
                 e_events.append({
                     "date": ir_target_dt.strftime("%Y-%m-%d"),
-                    "time": "장 시작 전/후",
+                    "time": "08:00",
+                    "datetime": f"{ir_target_dt.strftime('%Y-%m-%d')}T08:00:00",
                     "country": "KR",
                     "type": "Earnings",
                     "ticker": code,
                     "title": f"[{code}] {ticker_info['name']} 실적 발표",
+                    "description": f"{ticker_info['name']} 실적 관련 발표",
                     "importance": "high",
+                    "impact": "개별 종목 실적에 따른 변동성 확대",
                     "category": "stock",
+                    "actual": "-",
+                    "forecast": "-",
+                    "previous": "-",
                     "source": "Naver/YF"
                 })
         except Exception as e:
@@ -291,7 +313,11 @@ class FinnhubEarningsFetcher(BaseFetcher):
         self.api_key = api_key
         self.base_url = "https://finnhub.io/api/v1/calendar/earnings"
 
-    def fetch(self, start: datetime, end: datetime, lang: str = "ko") -> List[Dict]:
+    def fetch(self, start: datetime, end: datetime, lang: str = "ko", tickers: Optional[List[str]] = None) -> List[Dict]:
+        if tickers and len(tickers) > 0:
+            # 특정 종목 요청 시 글로벌 시총 상위 20개 조회를 건너뜀 (성능 최적화)
+            return []
+            
         if not self.api_key: 
             logger.warning("Finnhub API key missing. Falling back to yfinance for US earnings.")
             return self._fallback_yfinance_fetch(start, end)
@@ -312,16 +338,22 @@ class FinnhubEarningsFetcher(BaseFetcher):
             data = response.json()
             
             for item in data.get("earningsCalendar", []):
+                time_val = "08:00" if item["hour"] == "am" else "16:00"
                 events.append({
                     "date": item["date"],
-                    "time": "장 시작 전" if item["hour"] == "am" else "장 마감 후",
+                    "time": time_val,
+                    "datetime": f"{item['date']}T{time_val}:00",
                     "country": "US",
                     "type": "Earnings",
                     "ticker": item["symbol"],
                     "title": f"{item['symbol']} 실적 발표",
+                    "description": f"{item['symbol']} 분기 실적 및 가이던스 발표",
                     "importance": "high",
+                    "impact": "개별 종목 실적에 따른 변동성 확대",
                     "category": "stock",
-                    "forecast_eps": item.get("epsEstimate"),
+                    "actual": "-",
+                    "forecast": str(item.get("epsEstimate", "-")),
+                    "previous": "-",
                     "source": "Finnhub"
                 })
         except Exception as e:
@@ -353,13 +385,19 @@ class FinnhubEarningsFetcher(BaseFetcher):
                             if start <= target_dt <= end:
                                 return {
                                     "date": target_dt.strftime("%Y-%m-%d"),
-                                    "time": "장 시작 전/후",
+                                    "time": "08:00",
+                                    "datetime": f"{target_dt.strftime('%Y-%m-%d')}T08:00:00",
                                     "country": "US",
                                     "type": "Earnings",
                                     "ticker": ticker,
                                     "title": f"[{ticker}] 실적 발표",
+                                    "description": f"{ticker} 실적 관련 일정",
                                     "importance": "high",
+                                    "impact": "개별 종목 실적에 따른 변동성 확대",
                                     "category": "stock",
+                                    "actual": "-",
+                                    "forecast": "-",
+                                    "previous": "-",
                                     "source": "YF Fallback"
                                 }
                             break  # 가장 가까운 일정 1개만 확인

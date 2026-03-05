@@ -103,10 +103,10 @@ class EventCalendar:
 
         # 1. 병렬 데이터 수집
         tasks = [
-            asyncio.to_thread(self.fred_fetcher.fetch, start, end, lang),
-            asyncio.to_thread(self.te_scraper.fetch, start, end, lang),
-            asyncio.to_thread(self.naver_earnings_fetcher.fetch, start, end, lang),
-            asyncio.to_thread(self.earnings_fetcher.fetch, start, end, lang),
+            asyncio.to_thread(self.fred_fetcher.fetch, start, end, lang, tickers),
+            asyncio.to_thread(self.te_scraper.fetch, start, end, lang, tickers),
+            asyncio.to_thread(self.naver_earnings_fetcher.fetch, start, end, lang, tickers),
+            asyncio.to_thread(self.earnings_fetcher.fetch, start, end, lang, tickers),
             asyncio.to_thread(self._get_fomc_events, start, end, lang),
             asyncio.to_thread(self._get_market_holidays, start, end, lang),
         ]

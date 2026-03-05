@@ -117,7 +117,7 @@ class MultiTimeframeAnalyzer:
         
         if not skip_report:
             try:
-                response_dict = self.ai_analyzer.generate_report(llm_payload, image_bytes=chart_image_bytes)
+                response_dict = await self.ai_analyzer.generate_report(llm_payload, image_bytes=chart_image_bytes)
                 
                 final_score = int(response_dict.get("score", 50))
                 final_signal = response_dict.get("signal", "HOLD")
